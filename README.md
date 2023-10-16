@@ -311,8 +311,8 @@ interface B<T> : A<T>
 class C : B<Object>, A<Int>
 ```
 
-fails to compile with error: "Type parameter `T`{.Kotlin} of
-'`A`{.Kotlin}' has inconsistent values: `Object, Int`{.Kotlin}".
+fails to compile with error: "Type parameter `T` of
+'`A`' has inconsistent values: `Object, Int`".
 
 # Algorithm
 
