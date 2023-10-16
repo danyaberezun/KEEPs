@@ -1,9 +1,47 @@
 # The Problem
 
-Currently `Kotlin` doesn't support `GADT`, more precisely, dependent
-pattern matching, which seems to be natural for the language and exists
-in a number of languages like `Scala`, `OCaml`, `Haskell`, and so on.
-The simplest example which doesn't type-check is
+`Kotlin` currently supports algebraic data types, or *ADT*, via sealed classes and interfaces.
+ADTs allows one to form a type by combining other types.
+The beauty come when ADTs are equipped with pattern-matching (`when` expressions) - matching a value against a pattern.
+
+In functional programming (languages like `Scala`, `OCaml`, `Haskell`, and so on) the concept of generalized algebraic data types, or *GADT* (aka. guarded recursive datatype), is widely used.
+It is a generalization of parametric algebraic data types by permitting value constructors to return specific, rather than parametric, type-instantiations of their own datatype.
+GADTs enables the encapsulation of additional type information (invariants) in ADTs, along with the ability of utilizing the encapsulated type information when performing pattern matching.
+
+One of the classical well-known GADT use-cases is ensuring type safety when defining DSLs.
+For example (in `Scala`), an arithmetic expression can be type-safe by construction disallowing one to even construct an expression that uses binary operator on non-numerical values and tuples:
+```Scala 
+enum Expr[A]:
+  case LitInt(i: Int) extends Expr[Int]
+  case Add(e1: Expr[Int], e2: Expr[Int]) extends Expr[Int]
+  case Tuple[X, Y](x: Expr[X], y: Expr[Y]) extends Expr[(X, Y)]
+```
+In the example constructor `LitInt` asserts that the data being created is an `Expr[Int]`, 
+not just some generalized `Expt[T]`, while binary addition constructor `Add` asserts that its sub-expressions are numbers (are of type `Expr[Int]`).
+Thus, in this case our `invariants` are: any integer literal is actually an integer, while any binary addition has both sub-expressions of integer type.
+The main advantage is that this information is encapsulated in the type itself.
+Note, there is no way to construct an ill-formed expression (for example, addition on tuples).
+
+As ADTs comes with pattern-matching, GADTs comes with generalized pattern-matching that utilizes the information encoded/encapsulated in GADTs ensuring source code type safety.
+In other words, GADTs themselves represents *types correct by construction* while generalized pattern matching *guarantee absence of type errors during evaluation*.
+
+For example (in `Scala`), the following function that evaluates arithmetic expressions is well-typed.
+In the `LitInt` case: GADT constraint `Int = T` allows the branch to return `Int` instead of `T`.
+Moreover, in the `Add` case: we can safely use binary addition.
+That is, we locally use the information encapsulated in GADTs in each branch of pattern-matching ensuring the branch is well-typed with respect to this information and "forgetting" the information going beyond the branch.
+```Scala
+def eval[T](e: Expr[T]): T = e match
+  case LitInt(i) => i
+  case Add(e1, e2) => eval(e1) + eval(e2)
+  case Tuple(x, y) => (eval(x), eval(y))
+```
+
+GADTs have a number of applications, including DSls definition, strongly-typed evaluators, generic pretty-printing, generic traversals and queries, data bases, and typed parsing.
+
+Unfortunately, *`Kotlin` has no support for dependent pattern matching while allowing one to actually define a `GADT`*.
+This leads to some kind of inconsistency in the language design and unlikely compiler behaviour.
+For example, the following code does not type check, i.e. type-checker is not able to locally cast `e.i`, even though type checker has the all necessary information.
+
 
 ```Kotlin
 sealed class Expr<out T>
@@ -26,10 +64,12 @@ fun <T> eval(e: Expr2<T>): T = when (e) {
 }
 ```
 
-I.e. type-checker is not able to locally cast `e.i` to the required type
-although it has all the necessary information. The paper presents a
-proposal how the current type-checking can be modified in order to
-support dependent pattern-matching.
+***The paper presents a proposal how the current type-checker can be modified in order to cover this `gap` in the language design by adding support for dependent pattern-matching.***
+
+***Moreover, adding the mechanism to support for generalized pattern matching in type-checker also improves smart-casts behaviour and allows one to get rid of a number of unsafe casts in source code.***
+
+TODO: add examples for both!
+
 
 # Motivation
 
