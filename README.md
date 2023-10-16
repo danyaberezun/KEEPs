@@ -1,4 +1,4 @@
-# The Problem
+# The Problem and Motivation
 
 `Kotlin` currently supports algebraic data types, or *ADT*, via sealed classes and interfaces.
 ADTs allows one to form a type by combining other types.
@@ -77,7 +77,7 @@ While it is not the case for languages with OOP-style subtyping as it is shown i
 In fact we are able to run GADT inference in the moment we are identifying that there is a value in the program that has two types, i.e. sum type and type of the specific constructor in case of functional languages, and two arbitrary types in case of Kotlin.
 Luckily in Kotlin in order to support smart casts there exists a kind of flow typing that extracts operational information about different types of a value in a specific branch.
 Since this information is not limited to the `when`-expressions only, we are able to successfully infer types not only in case of `when`-expressions but also in branches of other control-flow operators like conditional branching and so on.
-For example, in all four following examples are well-typed as in all this cases we have an information that there is a value that is subtype of both `ExprIntLit` and `Expr<T>`.
+For example, all four examples below are well-typed as in all these cases we have an information that there is a value that is subtype of both `ExprIntLit` and `Expr<T>`.
 
 ```Kotlin
 sealed class Expr<out T>
@@ -89,9 +89,6 @@ fun <T> eval(e: Expr<T>): T = when (e) {
 ```
 
 ```Kotlin
-sealed class Expr<out T>
-data class ExprIntLit(val i: Int) : Expr<Int>
-
 fun <T> eval(e: Expr<T>): T {
     if (e is ExprIntLit) {
         return e.i
@@ -101,9 +98,6 @@ fun <T> eval(e: Expr<T>): T {
 ```
 
 ```Kotlin
-sealed class Expr<out T>
-data class ExprIntLit(val i: Int) : Expr<Int>
-
 fun <T> eval(e: Expr<T>): T {
     if (e !is ExprIntLit) {
         TODO()
@@ -113,9 +107,6 @@ fun <T> eval(e: Expr<T>): T {
 ```
 
 ```Kotlin
-sealed class Expr<out T>
-data class ExprIntLit(val i: Int) : Expr<Int>
-
 fun <T> eval(e1: Expr<T>, e2: Expr<Int>): T {
     if (e1 === e2) {
         return e.i
