@@ -51,7 +51,7 @@ that extracts operational information that some value must have several
 type in specific branch. As such analysis is not limited to the when
 expression, we are able to successfully infer types not in such case:
 
-```kotlin
+```Kotlin
 sealed class Expr<out T>
 data class ExprIntLit(val i: Int) : Expr<Int>
 
@@ -62,7 +62,7 @@ fun <T> eval(e: Expr<T>): T = when (e) {
 
 but also in cases like
 
-```kotlin
+```Kotlin
 sealed class Expr<out T>
 data class ExprIntLit(val i: Int) : Expr<Int>
 
@@ -74,7 +74,7 @@ fun <T> eval(e: Expr<T>): T {
 }
 ```
 
-```kotlin
+```Kotlin
 sealed class Expr<out T>
 data class ExprIntLit(val i: Int) : Expr<Int>
 
@@ -88,7 +88,7 @@ fun <T> eval(e: Expr<T>): T {
 
 and even
 
-```kotlin
+```Kotlin
 sealed class Expr<out T>
 data class ExprIntLit(val i: Int) : Expr<Int>
 
@@ -109,7 +109,7 @@ smart casts), but temporal values are outfiltered on the last stage so
 it is not hard to collect such statement for any values. And it will
 allow us to support even such cases:
 
-```kotlin
+```Kotlin
 sealed class Expr<out T>
 data class ExprIntLit(val i: Int) : Expr<Int>
 
@@ -131,7 +131,7 @@ examples](https://chrilves.github.io/posts/gadts_by_use_cases/)
 One easy, but very useful, benefit of GADTs is expressing relations
 about types like \"$A <: B$\" or \"$A = B$\":
 
-```kotlin
+```Kotlin
 sealed interface EqT<A, B>{
   class Evidence<X>() : EqT<X, X>
 }
@@ -143,7 +143,7 @@ sealed interface SubT<A, B>{
 
 It may be used like this:
 
-```kotlin
+```Kotlin
 fun <A, B> coerce(subT: SubT<B, A>, a: A): B =
   when (subT) {
     is SubT.Evidence<*> => a // Inferred: B :> A
@@ -159,7 +159,7 @@ we would like to optimize it while it's possible. We may take such
 property as a boolean but it will lead to the error-prune type casts.
 Instead of this we may use:
 
-```kotlin
+```Kotlin
 sealed interface Comparability<A>
 class Comparable<A : Comparable<A>>() : Comparability<A>
 class NotComparable<A>() : Comparability<A>
@@ -188,7 +188,7 @@ fun <V> defaultAlgorithm(values: List<V>)
 
 Let's imagine library with such architecture:
 
-```kotlin
+```Kotlin
 sealed interface Chart<A> {
     fun draw(chartData: A)
 }
@@ -199,7 +199,7 @@ class XYChart : Chart<XYData>
 If we would like to write an extension that will draw chart in another
 way, than it may looks like this:
 
-```kotlin
+```Kotlin
 fun <A> Chart<A>.myDraw(chartData: A): Unit =
   when (chart) {
     is PieChart -> {
@@ -215,7 +215,7 @@ Programmer have to explicitly cast data to PieData as he is sure that it
 is always successful. In this case it is true and could be inferenced
 gadt inference. Then code could became more type-safe and less verbose:
 
-```kotlin
+```Kotlin
 fun <A> Chart<A>.myDraw(data: A): Unit =
   when (chart) {
     is PieChart -> {
@@ -229,7 +229,7 @@ fun <A> Chart<A>.myDraw(data: A): Unit =
 
 Another real-world example is the following:
 
-```kotlin
+```Kotlin
 @Suppress("UNCHECKED_CAST")
 internal operator fun <T : CommonCompilerArguments> get(compilerArgumentsClass: Class<T>): T = when (compilerArgumentsClass) {
     K2MetadataCompilerArguments::class.java -> k2MetadataCompilerArguments as T
@@ -297,7 +297,7 @@ To implement it in Kotlin may be quite easier than in Scala as for each
 supertype of the type, Kotlin's generics may have only one value. For
 example, following code:
 
-``` {style="myScala"}
+```Scala
 trait A[+T]
 trait B[T] extends A[T]
 class C extends B[Object] with A[Int]
@@ -305,7 +305,7 @@ class C extends B[Object] with A[Int]
 
 is valid in Scala while the same code in Kotlin:
 
-```kotlin
+```Kotlin
 interface A<in T>
 interface B<T> : A<T>
 class C : B<Object>, A<Int>
@@ -404,7 +404,7 @@ constraints (or after them). Also we could use the firs type of the
 constraints' group for the inference of the most precise bound for the
 smart cast. For example, in such case:
 
-```kotlin
+```Kotlin
 interface A<in T, in V>
 interface A1<in V> : A<Int, V>
 interface A2<in T> : A<T, Int>
@@ -437,7 +437,7 @@ we could infer the type `{A1<Int> & A2<Int>}` instead of the current
 
 1.  In such code:
 
-    ```kotlin
+    ```Kotlin
     interface Func<in A, out B>
 
     class Identity<X> : Func<X, X>
@@ -456,7 +456,7 @@ we could infer the type `{A1<Int> & A2<Int>}` instead of the current
     is a subtype of $B$. This could not be inferred in Scala as such
     class:
 
-    ``` {style="myScala"}
+    ```Scala
     class FalseIdentity extends Identity[Any] with Func[Any, Nothing]
     ```
 
@@ -464,7 +464,7 @@ we could infer the type `{A1<Int> & A2<Int>}` instead of the current
 
 2.  For code showing the unsoundness of the GADTs in Scala 2:
 
-    ```kotlin
+    ```Kotlin
     open class C<out T>
     data class D<S>(var s: S) : C<S>()
 
