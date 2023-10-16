@@ -66,30 +66,18 @@ fun <T> eval(e: Expr2<T>): T = when (e) {
 
 ***The paper presents a proposal how the current type-checker can be modified in order to cover this `gap` in the language design by adding support for dependent pattern-matching.***
 
-***Moreover, adding the mechanism to support for generalized pattern matching in type-checker also improves smart-casts behaviour and allows one to get rid of a number of unsafe casts in source code.***
-
-TODO: add examples for both!
+***Moreover, adding the mechanism to support for generalized pattern matching in type-checker also improves smart-casts behaviour and allows one to get rid of a number of unsafe casts in source code.*** (see next section for details)
 
 
-# Motivation
+## The Problem Scope (or Accompanying Benefits)
 
-## Scope
-
-In general GADT inference is associated with the pattern-matching when
-we match a value of the sum type on one of their constructors and able
-to specialize the type parameters of the sum type based on their
-instances in the specific constructor. It is how the GADT inference
-working in the functional languages with their system of subtyping.
-While it is not a case for languages with OOP-style subtyping as it is
-shown in \[ref to C# paper\] and Scala 3 implementation and this will be
-described in algorithm section. The fact is that we are able to run any
-inference in the moment we are identifying that there is a value in the
-program that have two types (Sum type and type of the specific
-constructor in case of functional languages and two arbitrary types in
-case of Kotlin). Luckily Kotlin already have some kind of flow typing
-that extracts operational information that some value must have several
-type in specific branch. As such analysis is not limited to the when
-expression, we are able to successfully infer types not in such case:
+In general GADT inference is associated with the pattern-matching when we match a value of the sum type on one of their constructors and able to specialize the type parameters of the sum type based on their instances in the specific constructor.
+It is how the GADT inference works in the functional languages with their system of subtyping.
+While it is not the case for languages with OOP-style subtyping as it is shown in \[ref to C# paper\] and Scala 3 implementation (see algorithm section below for details).
+In fact we are able to run GADT inference in the moment we are identifying that there is a value in the program that has two types, i.e. sum type and type of the specific constructor in case of functional languages, and two arbitrary types in case of Kotlin.
+Luckily in Kotlin in order to support smart casts there exists a kind of flow typing that extracts operational information about different types of a value in a specific branch.
+Since this information is not limited to the `when`-expressions only, we are able to successfully infer types not only in case of `when`-expressions but also in branches of other control-flow operators like conditional branching and so on.
+For example, in all four following examples are well-typed as in all this cases we have an information that there is a value that is subtype of both `ExprIntLit` and `Expr<T>`.
 
 ```Kotlin
 sealed class Expr<out T>
@@ -99,8 +87,6 @@ fun <T> eval(e: Expr<T>): T = when (e) {
     is ExprIntLit -> e.i
 }
 ```
-
-but also in cases like
 
 ```Kotlin
 sealed class Expr<out T>
@@ -126,8 +112,6 @@ fun <T> eval(e: Expr<T>): T {
 }
 ```
 
-and even
-
 ```Kotlin
 sealed class Expr<out T>
 data class ExprIntLit(val i: Int) : Expr<Int>
@@ -140,14 +124,10 @@ fun <T> eval(e1: Expr<T>, e2: Expr<Int>): T {
 }
 ```
 
-As in all this cases we have an information that there is a value that
-is subtype of both, `ExprIntLit` and `Expr<T>`.
 
-The difference with the current implementation is that it collects such
-statements only for variables (as temporal values are not eligible for
-smart casts), but temporal values are outfiltered on the last stage so
-it is not hard to collect such statement for any values. And it will
-allow us to support even such cases:
+The current implementation that collects such statements only for variables (as temporal values are not eligible for smart casts) making last three examples ill-typed.
+But since temporal values are outfiltered on the very last stage, we can easily collect these statements for any values.
+As the consequence even the following case becomes well-typed.
 
 ```Kotlin
 sealed class Expr<out T>
