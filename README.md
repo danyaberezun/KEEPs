@@ -121,8 +121,7 @@ But since temporal values are outfiltered on the very last stage, we can easily 
 As the consequence even the following case becomes well-typed.
 
 ```Kotlin
-sealed class Expr<out T>
-data class ExprIntLit(val i: Int) : Expr<Int>
+fun <T> transform(e: Expr<T>): Expr<T> = TODO()
 
 fun <T> eval(e: Expr<T>): T {
     if (transform(e) is ExprIntLit) {
@@ -137,10 +136,10 @@ fun <T> eval(e: Expr<T>): T {
 [Source and more
 examples](https://chrilves.github.io/posts/gadts_by_use_cases/)
 
-### Runtime subtyping evidence {#runtime-subtyping-evidence .unnumbered}
+### Runtime subtyping evidence
 
 One easy, but very useful, benefit of GADTs is expressing relations
-about types like \"$A <: B$\" or \"$A = B$\":
+about types like \" $A <: B$\" or \" $A = B$\":
 
 ```Kotlin
 sealed interface EqT<A, B>{
@@ -195,7 +194,7 @@ fun <V : Comparable<V>> optimizedAlgorithm(values: List<V>)
 fun <V> defaultAlgorithm(values: List<V>)
 ```
 
-### More type-safe extensions {#more-type-safe-extensions .unnumbered}
+### More type-safe extensions
 
 Let's imagine library with such architecture:
 
@@ -255,8 +254,6 @@ the first three branches
 
 ## Real-world use-cases
 
-todo: bootstrap compiler and count redundant casts
-
 todo: bigcode analyzer for Scala
 
 fs2 in Scala lacks of GADT and simulates it through abstract methods:
@@ -284,8 +281,6 @@ Slick: Slick (Scala Language-Integrated Connection Kit) is Functional
 Relational Mapping (FRM) library for Scala that makes it easy to work
 with stored data in a type-safe manner. It uses GADTs to represent
 abstract syntax trees for database queries in a type-safe manner.
-
-[bugs](https://github.com/lampepfl/dotty/issues?q=label%3Aitype%3Abug+label%3Aarea%3Agadt)
 
 # Sources
 
@@ -339,7 +334,7 @@ subtyping and equalities constraints and their resolution.
 There is the type of variable and runtime value. *Type* consists of
 classes and their type parameters. We can project type on class and get
 the type parameters of that class for that type. Let $S$ be a type of
-scrutenee, \"$T$ is a "type of pattern".
+scrutenee, \" $T$ is a "type of pattern".
 
 1.  If $S$ is an intersection type then run the following algorithm for
     each type in intersection.
@@ -434,15 +429,10 @@ we could infer the type `{A1<Int> & A2<Int>}` instead of the current
 
 # Questions for implementation
 
-1.  Is the current limitations for the bounds allows us to express all
-    of the inferred bounds? What is the current limitations in the
-    compiler?
-
-2.  How to add bounds for the variables in the expression? Is it could
-    be in the same way as for smart casts?
-
-3.  In first example (below) we achieve a constraints $B :> * :> A$.
+1.  In first example (below) we achieve a constraints $B :> * :> A$.
     Such cases should be considered during the implementation.
+
+2.  TODO: [Scala bugs](https://github.com/lampepfl/dotty/issues?q=label%3Aitype%3Abug+label%3Aarea%3Agadt)
 
 # Examples
 
