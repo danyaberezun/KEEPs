@@ -237,27 +237,21 @@ fun <A> Chart<A>.myDraw(data: A): Unit =
   }
 ```
 
-Another real-world example is the following:
+## Real-world examples
 
-```Kotlin
-@Suppress("UNCHECKED_CAST")
-internal operator fun <T : CommonCompilerArguments> get(compilerArgumentsClass: Class<T>): T = when (compilerArgumentsClass) {
-    K2MetadataCompilerArguments::class.java -> k2MetadataCompilerArguments as T
-    K2JVMCompilerArguments::class.java -> k2JvmCompilerArguments as T
-    K2JSCompilerArguments::class.java -> k2JsCompilerArguments as T
-    else -> commonCompilerArguments as T
-}
-```
-
-With GADT inference we would be able to remove type casts at least in
-the first three branches
+1.  [Github link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/core/reflection.jvm/src/kotlin/reflect/jvm/internal/calls/ValueClassAwareCaller.kt#L45)
+2.  [Github link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/compiler/resolution/src/org/jetbrains/kotlin/resolve/calls/KotlinCallResolver.kt#L165)
+3.  [Github link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/compiler/fir/providers/src/org/jetbrains/kotlin/fir/types/TypeUtils.kt#L211-L21)
+4.  [Github link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/jps/jps-plugin/src/org/jetbrains/kotlin/jps/model/ProjectSettings.kt#L72-L75)
 
 ## Real-world use-cases
 
-todo: bigcode analyzer for Scala
-
 fs2 in Scala lacks of GADT and simulates it through abstract methods:
 [docs](https://github.com/typelevel/fs2/blob/fbd0f25238f0321474816375f1992ecc10e1cc3e/docs/implementation-notes.markdown)
+
+todo: bigcode analyzer for Scala
+
+todo: explore libraries?:
 
 https://github.com/higherkindness/mu-scala
 
