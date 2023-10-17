@@ -249,15 +249,13 @@ fun <A> Chart<A>.myDraw(data: A): Unit =
 fs2 in Scala lacks of GADT and simulates it through abstract methods:
 [docs](https://github.com/typelevel/fs2/blob/fbd0f25238f0321474816375f1992ecc10e1cc3e/docs/implementation-notes.markdown)
 
-todo: bigcode analyzer for Scala
+### todo: explore libraries?:
 
-todo: explore libraries?:
+todo: bigcode analyzer for Scala?
 
 https://github.com/higherkindness/mu-scala
 
 https://github.com/AdrielC/free-arrow
-
-https://www.informatik.uni-marburg.de/ kos/papers/gpce10.pdf
 
 https://github.com/milessabin/shapeless
 
@@ -275,6 +273,20 @@ Slick: Slick (Scala Language-Integrated Connection Kit) is Functional
 Relational Mapping (FRM) library for Scala that makes it easy to work
 with stored data in a type-safe manner. It uses GADTs to represent
 abstract syntax trees for database queries in a type-safe manner.
+
+### todo: explore papers?:
+
+https://www.informatik.uni-marburg.de/ kos/papers/gpce10.pdf
+
+http://www.cs.nott.ac.uk/~psznhn/Publications/icfp2005.pdf
+
+http://gallium.inria.fr/~fpottier/publis/fpottier-regis-gianas-typed-lr.pdf
+
+http://pauillac.inria.fr/~fpottier/slides/slides-popl04.pdf
+
+https://www.cs.tufts.edu/~nr/cs257/archive/tim-sheard/lang-of-future.pdf
+
+https://infoscience.epfl.ch/record/98468/files/MatchingObjectsWithPatterns-TR.pdf
 
 # Sources
 
@@ -475,7 +487,7 @@ we could infer the type `{A1<Int> & A2<Int>}` instead of the current
         }
       }
       val z: String = x.s as String
-    // Scala2: ClassCastException: Integer cannot be cast to String
+      // Scala2: ClassCastException: Integer cannot be cast to String
     }
     ```
 
