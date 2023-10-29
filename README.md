@@ -216,7 +216,7 @@ way, then it may look like this:
 
 ```Kotlin
 fun <A> Chart<A>.myDraw(chartData: A): Unit =
-  when (chart) {
+  when (this) {
     is PieChart -> {
       val pieData = chartData as PieData
       ... // modify
@@ -231,8 +231,8 @@ is always successful. In this case, it is true and could be inferenced
 gadt inference. Then code could become more type-safe and less verbose:
 
 ```Kotlin
-fun <A> Chart<A>.myDraw(data: A): Unit =
-  when (chart) {
+fun <A> Chart<A>.myDraw(chartData: A): Unit =
+  when (this) {
     is PieChart -> {
       // chartData is PieData in this branch
       ... // modify
@@ -452,6 +452,116 @@ situation that leads to disjoint constraints, they just do not add such
 constraints. On the next slide, they said that if all-except-one of the
 disjoint constraints are unsatisfied, then we could process such a
 constraint.
+
+# Overall algorithm
+
+## New type of statements
+
+We introduce a new type of statements collected by the data-flow analysis, called *type intersection*.
+Type intersection is a set of types 
+that are known to have a common value in the specific node of the control-flow graph.
+
+The issue with such statements is that they are not eligible for intersection.
+For example, in the following code:
+
+```Kotlin
+open class Box<T>
+class BoxString : Box<String>
+
+class ListString : List<String>
+
+fun <T> foo(box: Box<T>, list: List<T>): T {
+    if (...) {
+        box as BoxString
+        // We know that T = String here
+    } else {
+        list as ListString
+        // We know that T :> String here
+    }
+    // We should know that T :> String here
+}
+```
+
+We are able to infer that `T :> String` in the end of the function. 
+As we could not easily intersect statements `[{List<T> & ListString}]` and `[{Box<T> & BoxString}]`, 
+so we should store in the flow inferred bounds instead of the intersections.
+
+## Local type checker state
+
+Compared to smart-casts, which is inferring just another type for the variables,
+inference of the new bounds affects the whole type-checking process.
+To correctly use the inferred bounds, we have to incorporate them into the subtyping check.
+Thus, we have to add a dependency from type-checker to the control-flow graph node which does not exist right now.
+
+To demonstrate the problem, let's remember the following code:
+
+```Kotlin
+fun <A> Chart<A>.myDraw(chartData: A): Unit =
+    when (this) {
+        is PieChart -> {
+            // chartData is PieData in this branch
+            ... // modify
+            draw(chartData)
+        }
+        else -> draw(chartData)
+    }
+```
+
+inference of the bounds from one variable affects the type of another variable
+which could not be easily represented in the current type-checker. 
+
+## Proper processing of the expected type
+
+To incorporate a new bound into the subtyping check is not enough as for example for when expression, 
+we have such a hierarchy of nodes:
+
+* *when* expression
+   * *when* branch
+     * *when* branch body
+
+And we may infer the bounds only in the "*when* branch body" node, 
+but would like to use them in the "*when* expression 
+while checking conformance of the expected type to the provided one.
+
+The current implementation checks the expected type in the place where it was generated, 
+while to correctly take GADT inference into account, 
+we have to check the expected type more often
+and in case of success, replace the inferred type of the expression with the expected one.
+
+## Case without an expected type
+
+While to typecheck the expression with the expected type is not a problem and this code could be easily typechecked:
+
+```Kotlin
+fun <T> foo(v: Box<T>) {
+    val t: T = when (v) {
+        is BoxString -> "string"
+        is BoxInt -> 1
+    }
+}
+```
+
+The following code could not be easily typechecked as we do not know the expected type of the expression:
+
+```Kotlin
+fun <T> foo(v: Box<T>): T {
+    val t = when (v) {
+        is BoxString -> "string"
+        is BoxInt -> 1
+    }
+    return t
+}
+```
+
+As we do not know the expected type of the expression, 
+we could not cast `Int` or `String` in the respecting branches to the type `T`.
+And at the moment we are trying to intersect them, 
+we had already lost the information about the local bounds of T.
+
+TODO: discuss.
+We could replace `Int` with `{Int & T}`.
+We could record a CFG node in type.
+Scala does not do this.
 
 # Relation to smart casts
 
