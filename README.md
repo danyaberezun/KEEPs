@@ -2,7 +2,8 @@
 
 `Kotlin` currently supports algebraic data types, or *ADT*, via sealed classes and interfaces.
 ADTs allows one to form a type by combining other types.
-The beauty come when ADTs are equipped with pattern-matching (`when` expressions) - matching a value against a pattern.
+The beauty comes when ADTs are equipped with pattern-matching (`when` expressions) -
+matching a value against a pattern.
 
 In functional programming (languages like `Scala`, `OCaml`, `Haskell`, and so on) the concept of generalized algebraic data types, or *GADT* (aka. guarded recursive datatype), is widely used.
 It is a generalization of parametric algebraic data types by permitting value constructors to return specific, rather than parametric, type-instantiations of their own datatype.
@@ -18,17 +19,19 @@ enum Expr[A]:
 ```
 In the example constructor `LitInt` asserts that the data being created is an `Expr[Int]`, 
 not just some generalized `Expt[T]`, while binary addition constructor `Add` asserts that its sub-expressions are numbers (are of type `Expr[Int]`).
-Thus, in this case our `invariants` are: any integer literal is actually an integer, while any binary addition has both sub-expressions of integer type.
+Thus, in this case our `invariants` are: any integer literal is actually an integer, while any binary addition has both sub-expressions of an integer type.
 The main advantage is that this information is encapsulated in the type itself.
-Note, there is no way to construct an ill-formed expression (for example, addition on tuples).
+Note, there is no way to construct an ill-formed expression (for example, addition to tuples).
 
 As ADTs comes with pattern-matching, GADTs comes with generalized pattern-matching that utilizes the information encoded/encapsulated in GADTs ensuring source code type safety.
-In other words, GADTs themselves represents *types correct by construction* while generalized pattern matching *guarantee absence of type errors during evaluation*.
+In other words, GADTs themselves represent *types correct by construction* while generalized pattern matching *guarantee absence of type errors during evaluation*.
 
 For example (in `Scala`), the following function that evaluates arithmetic expressions is well-typed.
 In the `LitInt` case: GADT constraint `Int = T` allows the branch to return `Int` instead of `T`.
 Moreover, in the `Add` case: we can safely use binary addition.
-That is, we locally use the information encapsulated in GADTs in each branch of pattern-matching ensuring the branch is well-typed with respect to this information and "forgetting" the information going beyond the branch.
+That is, we locally use the information encapsulated in GADTs in each branch of pattern-matching,
+ensuring the branch is well-typed with respect to this information and "forgetting"
+the information going beyond the branch.
 ```Scala
 def eval[T](e: Expr[T]): T = e match
   case LitInt(i) => i
@@ -36,11 +39,13 @@ def eval[T](e: Expr[T]): T = e match
   case Tuple(x, y) => (eval(x), eval(y))
 ```
 
-GADTs have a number of applications, including DSls definition, strongly-typed evaluators, generic pretty-printing, generic traversals and queries, data bases, and typed parsing.
+GADTs have a number of applications, including DSls definition, strongly-typed evaluators,
+generic pretty-printing, generic traversals and queries, databases, and typed parsing.
 
 Unfortunately, *`Kotlin` has no support for dependent pattern matching while allowing one to actually define a `GADT`*.
-This leads to some kind of inconsistency in the language design and unlikely compiler behaviour.
-For example, the following code does not type check, i.e. type-checker is not able to locally cast `e.i`, even though type checker has the all necessary information.
+This leads to some kind of inconsistency in the language design and unlikely compiler behavior.
+For example, the following code does not type check, i.e., type-checker is not able to locally cast `e.i`,
+even though a type checker has the all necessary information.
 
 
 ```Kotlin
@@ -66,16 +71,16 @@ fun <T> eval(e: Expr2<T>): T = when (e) {
 
 ***The paper presents a proposal how the current type-checker can be modified in order to cover this `gap` in the language design by adding support for dependent pattern-matching.***
 
-***Moreover, adding the mechanism to support for generalized pattern matching in type-checker also improves smart-casts behaviour and allows one to get rid of a number of unsafe casts in source code.*** (see next section for details)
+***Moreover, adding the mechanism to support for generalized pattern matching in type-checker also improves smart-casts behaviour and allows one to get rid of a number of unsafe casts in source code.*** (See next section for details)
 
 
 ## The Problem Scope (or Accompanying Benefits)
 
-In general GADT inference is associated with the pattern-matching when we match a value of the sum type on one of their constructors and able to specialize the type parameters of the sum type based on their instances in the specific constructor.
+In general, GADT inference is associated with the pattern-matching when we match a value of the sum type on one of their constructors and able to specialize the type parameters of the sum type based on their instances in the specific constructor.
 It is how the GADT inference works in the functional languages with their system of subtyping.
-While it is not the case for languages with OOP-style subtyping as it is shown in \[ref to C# paper\] and Scala 3 implementation (see algorithm section below for details).
-In fact we are able to run GADT inference in the moment we are identifying that there is a value in the program that has two types, i.e. sum type and type of the specific constructor in case of functional languages, and two arbitrary types in case of Kotlin.
-Luckily in Kotlin in order to support smart casts there exists a kind of flow typing that extracts operational information about different types of a value in a specific branch.
+While it is not the case for languages with OOP-style subtyping as it is shown in \[ref to C# paper\] and Scala 3 implementation (see an algorithm section below for details).
+In fact, we are able to run GADT inference in the moment we are identifying that there is a value in the program that has two types, i.e., sum type and type of the specific constructor in case of functional languages, and two arbitrary types in case of Kotlin.
+Luckily, in Kotlin, in order to support smart casts, there exists a kind of flow typing that extracts operational information about different types of a value in a specific branch.
 Since this information is not limited to the `when`-expressions only, we are able to successfully infer types not only in case of `when`-expressions but also in branches of other control-flow operators like conditional branching and so on.
 For example, all four examples below are well-typed as in all these cases we have an information that there is a value that is subtype of both `ExprIntLit` and `Expr<T>`.
 
@@ -118,7 +123,7 @@ fun <T> eval(e1: Expr<T>, e2: Expr<Int>): T {
 
 The current implementation that collects such statements only for variables (as temporal values are not eligible for smart casts) making last three examples ill-typed.
 But since temporal values are outfiltered on the very last stage, we can easily collect these statements for any values.
-As the consequence even the following case becomes well-typed.
+As a consequence, even the following case becomes well-typed.
 
 ```Kotlin
 fun <T> transform(e: Expr<T>): Expr<T> = TODO()
@@ -138,16 +143,16 @@ examples](https://chrilves.github.io/posts/gadts_by_use_cases/)
 
 ### Runtime subtyping evidence
 
-One easy, but very useful, benefit of GADTs is expressing relations
+One easy, but beneficial, benefit of GADTs is expressing relations
 about types like \" $A <: B$\" or \" $A = B$\":
 
 ```Kotlin
 sealed interface EqT<A, B>{
-  class Evidence<X>() : EqT<X, X>
+  class Evidence<X> : EqT<X, X>
 }
 
 sealed interface SubT<A, B>{
-  class Evidence<A, B : A>() : EqT<A, B>
+  class Evidence<A, B : A> : EqT<A, B>
 }
 ```
 
@@ -156,18 +161,18 @@ It may be used like this:
 ```Kotlin
 fun <A, B> coerce(subT: SubT<B, A>, a: A): B =
   when (subT) {
-    is SubT.Evidence<*> => a // Inferred: B :> A
+    is SubT.Evidence<*> -> a // Inferred: B :> A
   }
 ```
 
 While in this example, we were able to express this in the constraints
-for generic parameter, it is still may be useful for example in case we
+for generic parameter, it is still may be useful, for example, in case we
 have a complex collection which can be slightly optimized based on any
-property of the stored type (for example if they are comparable). We may
-do not want to write another implementation as it is not significant but
+property of the stored type (for example, if they are comparable). We may
+do not want to write another implementation as it is not significant, but
 we would like to optimize it while it's possible. We may take such
-property as a boolean but it will lead to the error-prune type casts.
-Instead of this we may use:
+property as a boolean, but it will lead to the error-prune type casts.
+Instead of this, we may use:
 
 ```Kotlin
 sealed interface Comparability<A>
@@ -196,7 +201,7 @@ fun <V> defaultAlgorithm(values: List<V>)
 
 ### More type-safe extensions
 
-Let's imagine library with such architecture:
+Let's imagine a library with such an architecture:
 
 ```Kotlin
 sealed interface Chart<A> {
@@ -207,7 +212,7 @@ class XYChart : Chart<XYData>
 ```
 
 If we would like to write an extension that will draw chart in another
-way, than it may looks like this:
+way, then it may look like this:
 
 ```Kotlin
 fun <A> Chart<A>.myDraw(chartData: A): Unit =
@@ -222,8 +227,8 @@ fun <A> Chart<A>.myDraw(chartData: A): Unit =
 ```
 
 Programmer have to explicitly cast data to PieData as he is sure that it
-is always successful. In this case it is true and could be inferenced
-gadt inference. Then code could became more type-safe and less verbose:
+is always successful. In this case, it is true and could be inferenced
+gadt inference. Then code could become more type-safe and less verbose:
 
 ```Kotlin
 fun <A> Chart<A>.myDraw(data: A): Unit =
@@ -239,10 +244,10 @@ fun <A> Chart<A>.myDraw(data: A): Unit =
 
 ## Real-world examples
 
-1.  [Github link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/core/reflection.jvm/src/kotlin/reflect/jvm/internal/calls/ValueClassAwareCaller.kt#L45)
-2.  [Github link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/compiler/resolution/src/org/jetbrains/kotlin/resolve/calls/KotlinCallResolver.kt#L165)
-3.  [Github link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/compiler/fir/providers/src/org/jetbrains/kotlin/fir/types/TypeUtils.kt#L211-L21)
-4.  [Github link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/jps/jps-plugin/src/org/jetbrains/kotlin/jps/model/ProjectSettings.kt#L72-L75)
+1.  [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/core/reflection.jvm/src/kotlin/reflect/jvm/internal/calls/ValueClassAwareCaller.kt#L45)
+2.  [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/compiler/resolution/src/org/jetbrains/kotlin/resolve/calls/KotlinCallResolver.kt#L165)
+3.  [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/compiler/fir/providers/src/org/jetbrains/kotlin/fir/types/TypeUtils.kt#L211-L21)
+4.  [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/jps/jps-plugin/src/org/jetbrains/kotlin/jps/model/ProjectSettings.kt#L72-L75)
 
 ## Real-world use-cases
 
@@ -305,9 +310,9 @@ https://infoscience.epfl.ch/record/98468/files/MatchingObjectsWithPatterns-TR.pd
 
 # Compared to Scala implementation
 
-To implement it in Kotlin may be quite easier than in Scala as for each
+To implement it in Kotlin may be quite easier than in Scala, as for each
 supertype of the type, Kotlin's generics may have only one value. For
-example, following code:
+example, the following code:
 
 ```Scala
 trait A[+T]
@@ -329,25 +334,25 @@ fails to compile with error: "Type parameter `T` of
 # Algorithm
 
 The algorithm arises when we would like to intersect types (locally). It
-aims to specialize all of the types in the intersection based on the
+aims to specialize all the types in the intersection based on the
 information that there is the value with the intersected type. This
 algorithm could be merged with the smart-casting as it infers the
-required information. Algorithm consist of two parts, generation of
-subtyping and equalities constraints and their resolution.
+required information. The Algorithm consists of two parts, generation of
+subtyping and equality constraints and their resolution.
 
-## Generation of the constraints
+## Generation of constraints
 
 There is the type of variable and runtime value. *Type* consists of
 classes and their type parameters. We can project type on class and get
 the type parameters of that class for that type. Let $S$ be a type of
 scrutenee, \" $T$ is a "type of pattern".
 
-1.  If $S$ is an intersection type then run the following algorithm for
+1.  If $S$ is an intersection type, then run the following algorithm for
     each type in intersection.
 
 2.  Intersect types $S$ and $T$
 
-3.  Find all common classes (super-types) of types $S$ and $T$, denote
+3.  Find all common classes (super-types) of types $S$ and $T$, denoted 
     as $T_n$
 
 4.  For each class $T_n$ do:
@@ -366,19 +371,19 @@ scrutenee, \" $T$ is a "type of pattern".
 
     2.  Generate constraints: for each parameter position
 
-        1.  If position is invariant then $p_T^{T_n} = p_S^{T_n}$ for
+        1.  If position is invariant, then $p_T^{T_n} = p_S^{T_n}$ for
             that position.
 
         2.  If it is not invariant, then
 
-            1.  If both of the parameters do not depends on the co- and
+            1.  If both of the parameters do not depend on the co- and
                 contra- variant positions then both of them are equal to
                 the real parameters and equal to each other.
                 Consequently, we can add the constraint
                 $p_T^{T_n} = p_S^{T_n}$ for that position.
 
-            2.  If any of the parameters do not depends on the parameters in
-                co- and  contra- variant positions of the original type
+            2.  If any of the parameters do not depend on the parameters in
+                co- and contra- variant positions of the original type,
                 then that parameter is equal
                 to the real parameter and have to be a subtype (for
                 covariant position) or supertype (for contravariant
@@ -386,36 +391,37 @@ scrutenee, \" $T$ is a "type of pattern".
                 the constraint $p_?^{T_n} :> p_?^{T_n}$ for that
                 position.
 
-            4.  If both of them depends on the co- and contra- variant
-                positions then we only can establish that both of them
+            4.  If both of them depend on the co- and contra- variant
+                positions, then we only can establish that both of them
                 are subtypes (for covariant position) or supertypes (for
-                contravariant position) of the real type and we could
+                contravariant position) of the real type, and we could
                 not get any information in this case.
 
 ### Examples
 
 #### Constant (effectively invariant) parameter
 
-> If any of the parameters do not depends on the co- and contra- variant positions then that parameter is equal to the real parameter
+> If any of the parameters do not depend on the co- and contra- variant positions, then that parameter is equal to the real parameter
 
 If we would like to generate a constraints from types `List<T>` and `List<Serializable>`, we would not be able to get any information about bounds of T. 
 For example, T could be an `Any` type while the real type may be `Int` which is actually `Serializable`.
 
-On the other hand, If we we consider such type:
+On the other hand, If we consider such a type:
 
 ```Kotlin
 interface SerializableList : List<Serializable>
 ```
 
-and would like to generate a constraints from types `List<T>` and `SerializableList`, then we may succesfully infer that `T :> Serializable`.
-As there is the guarantee that the real (runtime) parameter of type projected on `List` is actually `Serializable`.
+And would like to generate a constraints from types `List<T>` and `SerializableList`,
+then we may successfully infer that `T :> Serializable`.
+As there is the guarantee that the real (runtime) parameter of a type projected on `List` is actually `Serializable`.
 
 > the transitive closure S∗(T) of the set of type supertypes S(T : \(S_1\), . . . , \(S_m\)) = {\(S_1\), . . . , \(S_m\)} ∪ S(\(S_1\)) ∪ . . . ∪ S(\(S_m\))
 > is consistent, i.e., does not contain two parameterized types with different type arguments.
 
 Then, based of the information that `List<T>` is a supertype of `List<Serializable>`, with the consideration of type-parameter's variance, we are able to infer that `T :> Serializable`.
 
-Moreover, even in case of such type:
+Moreover, even in the case of such a type:
 
 ```Kotlin
 interface InvariantList<T> : List<T>
@@ -435,8 +441,8 @@ disjoint constraints `A :> B | A :> C` which is not easy to solve. As I
 got from [this moment of
 presentation](https://youtu.be/VV9lPg3fNl8?t=1391), if they met the
 situation that leads to disjoint constraints, they just do not add such
-constraints. From the next slide they said that if all-except-one of the
-disjoint constraints are unsatisfied, than we could process such a
+constraints. On the next slide, they said that if all-except-one of the
+disjoint constraints are unsatisfied, then we could process such a
 constraint.
 
 # Relation to smart casts
@@ -444,9 +450,7 @@ constraint.
 I guess that we could use the same technique to infer the most precise
 type for smart cast after the intersection. We just should not remove
 constraints related to the real types and solve them with the other
-constraints (or after them). Also we could use the firs type of the
-constraints' group for the inference of the most precise bound for the
-smart cast. For example, in such case:
+constraints (or after them). For example, in such a case:
 
 ```Kotlin
 interface A<in T, in V>
@@ -461,13 +465,12 @@ fun f(v: A1<*>) {
 }
 ```
 
-we could infer the type `{A1<Int> & A2<Int>}` instead of the current
-`{A1<*> & A2<*>}`. For example it'll allow us to cast that type to the
-`A<Int, Int>`
+We could infer the type `{A1<Int> & A2<Int>}` instead of the current `{A1<*> & A2<*>}`.
+For example, it'll allow us to cast that type to the `A<Int, Int>`
 
 # Questions for implementation
 
-1.  In first example (below) we achieve a constraints $B :> * :> A$.
+1.  In the first example (below) we achieve a constraints $B :> * :> A$.
     Such cases should be considered during the implementation.
 
 2.  TODO: [Scala bugs](https://github.com/lampepfl/dotty/issues?q=label%3Aitype%3Abug+label%3Aarea%3Agadt)
@@ -493,7 +496,7 @@ we could infer the type `{A1<Int> & A2<Int>}` instead of the current
 
     We will get a constraints $B :> * :> A$ and could establish that $A$
     is a subtype of $B$. This could not be inferred in Scala as such
-    class:
+    a class:
 
     ```Scala
     class FalseIdentity extends Identity[Any] with Func[Any, Nothing]
