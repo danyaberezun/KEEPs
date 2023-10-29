@@ -377,19 +377,51 @@ scrutenee, \" $T$ is a "type of pattern".
                 Consequently, we can add the constraint
                 $p_T^{T_n} = p_S^{T_n}$ for that position.
 
-            2.  If any of the parameters do not depends on the co- and
-                contra- variant positions then that parameter is equal
+            2.  If any of the parameters do not depends on the parameters in
+                co- and  contra- variant positions of the original type
+                then that parameter is equal
                 to the real parameter and have to be a subtype (for
                 covariant position) or supertype (for contravariant
                 position) of the equal type. Consequently, we can add
                 the constraint $p_?^{T_n} :> p_?^{T_n}$ for that
                 position.
 
-            3.  If both of them depends on the co- and contra- variant
+            4.  If both of them depends on the co- and contra- variant
                 positions then we only can establish that both of them
                 are subtypes (for covariant position) or supertypes (for
                 contravariant position) of the real type and we could
                 not get any information in this case.
+
+### Examples
+
+#### Constant (effectively invariant) parameter
+
+> If any of the parameters do not depends on the co- and contra- variant positions then that parameter is equal to the real parameter
+
+If we would like to generate a constraints from types `List<T>` and `List<Serializable>`, we would not be able to get any information about bounds of T. 
+For example, T could be an `Any` type while the real type may be `Int` which is actually `Serializable`.
+
+On the other hand, If we we consider such type:
+
+```Kotlin
+interface SerializableList : List<Serializable>
+```
+
+and would like to generate a constraints from types `List<T>` and `SerializableList`, then we may succesfully infer that `T :> Serializable`.
+As there is the guarantee that the real (runtime) parameter of type projected on `List` is actually `Serializable`.
+
+> the transitive closure S∗(T) of the set of type supertypes S(T : \(S_1\), . . . , \(S_m\)) = {\(S_1\), . . . , \(S_m\)} ∪ S(\(S_1\)) ∪ . . . ∪ S(\(S_m\))
+> is consistent, i.e., does not contain two parameterized types with different type arguments.
+
+Then, based of the information that `List<T>` is a supertype of `List<Serializable>`, with the consideration of type-parameter's variance, we are able to infer that `T :> Serializable`.
+
+Moreover, even in case of such type:
+
+```Kotlin
+interface InvariantList<T> : List<T>
+```
+
+We are able to infer the same constraints from the pair `List<T>` and `InvariantList<Serializable>` due to the same arguments.
 
 ## Constraints resolution
 
