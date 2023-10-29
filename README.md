@@ -78,7 +78,7 @@ fun <T> eval(e: Expr2<T>): T = when (e) {
 
 In general, GADT inference is associated with the pattern-matching when we match a value of the sum type on one of their constructors and able to specialize the type parameters of the sum type based on their instances in the specific constructor.
 It is how the GADT inference works in the functional languages with their system of subtyping.
-While it is not the case for languages with OOP-style subtyping as it is shown in \[ref to C# paper\] and Scala 3 implementation (see an algorithm section below for details).
+While it is not the case for languages with OOP-style subtyping as it is shown in \[ref to C# paper\] and Scala 3 implementation (see an **Bounds inference algorithm** section below for details).
 In fact, we are able to run GADT inference in the moment we are identifying that there is a value in the program that has two types, i.e., sum type and type of the specific constructor in case of functional languages, and two arbitrary types in case of Kotlin.
 Luckily, in Kotlin, in order to support smart casts, there exists a kind of flow typing that extracts operational information about different types of a value in a specific branch.
 Since this information is not limited to the `when`-expressions only, we are able to successfully infer types not only in case of `when`-expressions but also in branches of other control-flow operators like conditional branching and so on.
@@ -308,14 +308,18 @@ https://infoscience.epfl.ch/record/98468/files/MatchingObjectsWithPatterns-TR.pd
 4.  [Dotty PR 1](https://github.com/lampepfl/dotty/pull/5736), [Dotty PR
     2](https://github.com/lampepfl/dotty/pull/6398)
 
-# Algorithm
+# Bounds inference algorithm
 
-The algorithm arises when we would like to intersect types (locally). It
-aims to specialize all the types in the intersection based on the
-information that there is the value with the intersected type. This
-algorithm could be merged with the smart-casting as it infers the
-required information. The Algorithm consists of two parts, generation of
-subtyping and equality constraints and their resolution.
+This algorithm is aimed to infer bounds for type parameters based on the operational information about the types.
+
+Input of the algorithm is a set of type intersections
+that is known to have a value in the specific node of the control-flow graph.
+Output of the algorithm is a set of bounds for type parameters used in types in the intersections
+(or more generally, reachable in this node of the control-flow graph).
+
+This algorithm could be merged with the smart-casting
+as it also infers the bound for the real type as well as for type parameters.
+The algorithm consists of two parts, generation of subtyping and equality constraints and their resolution.
 
 ## Generation of constraints
 
