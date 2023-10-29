@@ -308,29 +308,6 @@ https://infoscience.epfl.ch/record/98468/files/MatchingObjectsWithPatterns-TR.pd
 4.  [Dotty PR 1](https://github.com/lampepfl/dotty/pull/5736), [Dotty PR
     2](https://github.com/lampepfl/dotty/pull/6398)
 
-# Compared to Scala implementation
-
-To implement it in Kotlin may be quite easier than in Scala, as for each
-supertype of the type, Kotlin's generics may have only one value. For
-example, the following code:
-
-```Scala
-trait A[+T]
-trait B[T] extends A[T]
-class C extends B[Object] with A[Int]
-```
-
-is valid in Scala while the same code in Kotlin:
-
-```Kotlin
-interface A<in T>
-interface B<T> : A<T>
-class C : B<Object>, A<Int>
-```
-
-fails to compile with error: "Type parameter `T` of
-'`A`' has inconsistent values: `Object, Int`".
-
 # Algorithm
 
 The algorithm arises when we would like to intersect types (locally). It
@@ -396,6 +373,33 @@ scrutenee, \" $T$ is a "type of pattern".
                 are subtypes (for covariant position) or supertypes (for
                 contravariant position) of the real type, and we could
                 not get any information in this case.
+
+### Compared to Scala
+
+The algorithm is quite different from the Scala's algorithm and may infer bounds in more cases.
+The main difference arises from the following paragraph of the Kotlin's specification:
+
+> the transitive closure S∗(T) of the set of type supertypes S(T : \(S_1\), . . . , \(S_m\)) = {\(S_1\), . . . , \(S_m\)} ∪ S(\(S_1\)) ∪ . . . ∪ S(\(S_m\))
+> is consistent, i.e., does not contain two parameterized types with different type arguments.
+
+For instance, the following code:
+
+```Scala
+trait A[+T]
+trait B[T] extends A[T]
+class C extends B[Object] with A[Int]
+```
+
+is valid in Scala while the same code in Kotlin:
+
+```Kotlin
+interface A<in T>
+interface B<T> : A<T>
+class C : B<Object>, A<Int>
+```
+
+fails to compile with error: "Type parameter `T` of
+'`A`' has inconsistent values: `Object, Int`".
 
 ### Examples
 
