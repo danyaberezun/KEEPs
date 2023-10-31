@@ -453,7 +453,7 @@ constraints. On the next slide, they said that if all-except-one of the
 disjoint constraints are unsatisfied, then we could process such a
 constraint.
 
-# Overall algorithm
+# Changes to the type checking
 
 ## New type of statements
 
