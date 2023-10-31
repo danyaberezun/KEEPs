@@ -563,12 +563,39 @@ We could replace `Int` with `{Int & T}`.
 We could record a CFG node in type.
 Scala does not do this.
 
-# Relation to smart casts
+# Related features
 
-I guess that we could use the same technique to infer the most precise
-type for smart cast after the intersection. We just should not remove
-constraints related to the real types and solve them with the other
-constraints (or after them). For example, in such a case:
+## Bare types
+
+Gadt inference would be useful to infer bounds for bare types as well. 
+Bare types are the types with omitted type parameters.
+They are designed to use in a cases like this:
+
+```Kotlin
+fun <T> foo(l: Collection<T>) {
+    when (l) {
+        is List -> ... // l is List<T>
+        is Set -> ... // l is Set<T>
+    }
+}
+```
+
+Type parameters of bare types are inferred from the type of the scrutinee.
+Inference of the type parameters is highly related to the GADT inference.
+We have to infer all the bounds for the type parameters of the cast type 
+based on the information that the value is both of original type and cast type with all arguments as `*`.
+As the algorithm has to replace the star projections with temporal type variables 
+(to manage constraints like $B :> * :> A$),
+it is also inferring the bounds for such variables.
+The next step would be to encode the type parameters to satisfy inferred bounds.
+
+## Smart casts
+
+The other existing feature that could be positively affected by the GADT inference is the smart casts.
+As the smart cast is natively collecting the information about the types of the value in the specific branch,
+we could use this information to specialize them. 
+More precisely, we could specialize the type parameters that could be placed instead of the star projections. 
+For example, in such a case:
 
 ```Kotlin
 interface A<in T, in V>
@@ -576,7 +603,7 @@ interface A1<in V> : A<Int, V>
 interface A2<in T> : A<T, Int>
 
 fun f(v: A1<*>) {
-    val vv : A2<Int> = when (v) {
+    val v1 : A2<Int> = when (v) {
         is A2<*> -> v
         else -> throw Exception()
     }
@@ -584,7 +611,17 @@ fun f(v: A1<*>) {
 ```
 
 We could infer the type `{A1<Int> & A2<Int>}` instead of the current `{A1<*> & A2<*>}`.
-For example, it'll allow us to cast that type to the `A<Int, Int>`
+And then this code could be successfully typechecked.
+
+## Existential types
+
+The other possible feature of the type system that could bring them all together is the existential types.
+As the behaviour of the existential types is quite similar to the behaviour of the generic parameters, 
+we are able to use the same algorithm to infer local bounds for them.
+With such a feature, 
+the bare types feature could be implemented as a syntactic sugar for the type with existential type parameters.
+As well as we could replace all star projections with implicit existential type parameter, 
+we could natively introduce refinement of the star projections in the smart-casts (and maybe slightly more).
 
 # Questions for implementation
 
