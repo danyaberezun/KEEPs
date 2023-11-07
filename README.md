@@ -262,12 +262,28 @@ fun <A> Chart<A>.myDraw(chartData: A): Unit =
 
 ## Real-world use-cases
 
-fs2 in Scala lacks of GADT and simulates it through abstract methods:
-[docs](https://github.com/typelevel/fs2/blob/fbd0f25238f0321474816375f1992ecc10e1cc3e/docs/implementation-notes.markdown)
+There are several papers that discuss the use-cases of GADTs[links].
+The main mentioned advantages are:
 
-### todo: explore libraries?:
-
-todo: bigcode analyzer for Scala?
+* Well-typed LR Parser. 
+  Gadt allows eliminating some runtime checks which improve performance over non-GADTs implementations.
+* Efficient AVL Tree.
+  The performance comparison shows
+  that the GADTs implementation can improve insertion speed by a factor of 1.7 compared to traditional non-GADTs implementations.
+* Typed Printf/Scanf Formats.
+  They proposed using GADTs instead of strings to represent printf/scanf formats in OCaml, 
+  which not only improves performance but also fixes potential bugs and stabilizes the code.
+* Event Processing Optimizations.
+  GADTs enabled a number of optimizations in the area of event processing, 
+  which led to performance gains in applications focused on this aspect.
+* ETC
+  
+To find existing libraries that use GADTs, 
+especially in Scala, whose type system is the most similar to the Kotlin's of languages with GADTs,
+requires significant work to analyze the codebase of multiple libraries.
+The only one that lies on the surface is fs2, 
+which have a [standalone document](https://github.com/typelevel/fs2/blob/fbd0f25238f0321474816375f1992ecc10e1cc3e/docs/implementation-notes.markdown) 
+describing how does they simulate GADTs in Scala.
 
 https://github.com/higherkindness/mu-scala
 
