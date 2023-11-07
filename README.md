@@ -409,6 +409,36 @@ class C : B<Object>, A<Int>
 fails to compile with error: "Type parameter `T` of
 '`A`' has inconsistent values: `Object, Int`".
 
+### Special cases
+
+#### Star projections
+
+The constraint generation is based on the transitive relation of both types to the real (runtime) type of the value.
+The only case where it would not work as expected is the star projections.
+The issue is that they all are equal to each other,
+and we are not able to distinguish them to make correct transitive relations.
+For example, in this case:
+
+```Kotlin
+sealed interface EqT<A, B>{
+  class Evidence<X> : EqT<X, X>
+}
+
+fun <A, B> coerce(eqT: EqT<B, A>, a: A): B =
+  when (eqT) {
+    is EqT.Evidence<*> -> a
+  }
+```
+
+We will result a constraints $B = \*$, $\* = A$
+and could not establish that $A = B$ as we do not even know if these stars are the same.
+So we have to replace all star projections with temporal type variables (standing for the real type)
+to correctly follow the transitive relations on them.
+
+#### Flexible types
+
+For flexible types, we have to run the algorithm on their upper bound as it is the type which is guaranteed to be a supertype of the real type.
+
 ### Examples
 
 #### Constant (effectively invariant) parameter
