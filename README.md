@@ -473,20 +473,30 @@ We are able to infer the same constraints from the pair `List<T>` and `Invariant
 
 ## Constraints resolution
 
-I guess it's obvious in general case.
+This part is quite straightforward:
+
+1. If any of the types in the constraint is a type parameter, then just record a constraints.
+2. If any of the types is the temporal type variable, then record a bound for this variable. 
+   And generate new transitive constraints from this variable. 
+   (For new upper bound, generate constraints with all lower bounds and vice versa)
+3. If both of the types are simple types, 
+   then generate new constraints based on their type parameters.
+   More precisely, we have to look at each type parameter position in each common supertype 
+   and record a constraint according to position's variance.
+   We also should track effectively invariant parameters in the same way as before.
 
 ### Special cases
 
 #### Intersection types
 
 If we would like to satisfy a constraint `A :> B & C` we result in a
-disjoint constraints `A :> B | A :> C` which is not easy to solve. As I
-got from [this moment of
-presentation](https://youtu.be/VV9lPg3fNl8?t=1391), if they met the
-situation that leads to disjoint constraints, they just do not add such
-constraints. On the next slide, they said that if all-except-one of the
-disjoint constraints are unsatisfied, then we could process such a
-constraint.
+disjoint constraints `A :> B | A :> C` which is not easy to solve. 
+As I got from [this moment of presentation](https://youtu.be/VV9lPg3fNl8?t=1391), 
+if they met the situation that leads to disjoint constraints, 
+they just do not add such constraints. 
+On the next slide, 
+they said that if all-except-one of the disjoint constraints are unsatisfied, 
+then we could process such a constraint.
 
 #### Flexible types
 
