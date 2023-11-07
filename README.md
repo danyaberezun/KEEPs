@@ -473,10 +473,11 @@ We are able to infer the same constraints from the pair `List<T>` and `Invariant
 
 ## Constraints resolution
 
-I guess it's obvious. The only complicated case that comes in mind is
-the following:
+I guess it's obvious in general case.
 
-### Intersection types
+### Special cases
+
+#### Intersection types
 
 If we would like to satisfy a constraint `A :> B & C` we result in a
 disjoint constraints `A :> B | A :> C` which is not easy to solve. As I
@@ -486,6 +487,16 @@ situation that leads to disjoint constraints, they just do not add such
 constraints. On the next slide, they said that if all-except-one of the
 disjoint constraints are unsatisfied, then we could process such a
 constraint.
+
+#### Flexible types
+
+For flexible types we have to follow their subtyping rules. 
+[Explanation](https://github.com/JetBrains/kotlin/blob/master/spec-docs/flexible-java-types.md).
+More presicely:
+
+* $A :> {B, C} => A :> C$
+* ${B, C} :> A => B :> A$
+* $A = {B, C} => A :> C, B :> A$
 
 # Changes to the type checking
 
