@@ -687,10 +687,7 @@ we could natively introduce refinement of the star projections in the smart-cast
 
 # Questions for implementation
 
-1.  In the first example (below) we achieve a constraints $B :> * :> A$.
-    Such cases should be considered during the implementation.
-
-2.  TODO: [Scala bugs](https://github.com/lampepfl/dotty/issues?q=label%3Aitype%3Abug+label%3Aarea%3Agadt)
+1. TODO: [Scala bugs](https://github.com/lampepfl/dotty/issues?q=label%3Aitype%3Abug+label%3Aarea%3Agadt)
 
 # Examples
 
