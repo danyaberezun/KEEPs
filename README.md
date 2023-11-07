@@ -169,19 +169,26 @@ fun <A, B> coerce(subT: SubT<B, A>, a: A): B =
   }
 ```
 
-While in this example, we were able to express this in the constraints
-for generic parameter, it is still may be useful, for example, in case we
+While in this example, we were able to express this in the constraints for generic parameter. 
+Nevertheless, it may be useful, for example, in case we
 have a complex collection which can be slightly optimized based on any
-property of the stored type (for example, if they are comparable). We may
-do not want to write another implementation as it is not significant, but
-we would like to optimize it while it's possible. We may take such
-property as a boolean, but it will lead to the error-prune type casts.
-Instead of this, we may use:
+property of the stored type (for example, if they are comparable). 
+
+Currently available solutions:
+
+* Write another implementation for each property. 
+  Require much additional code, abstract classes and may lead to code duplication.
+* Get property as a boolean or enum parameter.
+  In this case, 
+  we have to write explicit error-prone casts in each place where we require comparability.
+
+With gadt inference, we can express it more conveniently:
 
 ```Kotlin
-sealed interface Comparability<A>
-class Comparable<A : Comparable<A>>() : Comparability<A>
-class NotComparable<A>() : Comparability<A>
+sealed interface Comparability<A> {
+    class Comparable<A : kotlin.Comparable<A>> : Comparability<A>
+    class NotComparable<A> : Comparability<A>
+}
 
 ...
 
@@ -192,8 +199,8 @@ class ComplexCollection<V>(val comparability: Comparability<V>) {
 
   fun doAlgorithm() {
     when (comparability) {
-      is Comparable<*> -> optimizedAlgorithm(values)
-      is NotComparable<*> -> defaultAlgorithm(values)
+      is Comparability.Comparable<*> -> optimizedAlgorithm(values)
+      is Comparability.NotComparable<*> -> defaultAlgorithm(values)
     }
   }
   
