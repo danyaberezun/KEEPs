@@ -511,9 +511,9 @@ For example, in the following code:
 
 ```Kotlin
 open class Box<T>
-class BoxString : Box<String>
+class BoxString : Box<String>()
 
-class ListString : List<String>
+interface ListString : List<String>
 
 fun <T> foo(box: Box<T>, list: List<T>): T {
     if (...) {
