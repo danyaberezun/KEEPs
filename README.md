@@ -176,9 +176,9 @@ property of the stored type (for example, if they are comparable).
 
 Currently available solutions:
 
-* Write another implementation for each property. 
+* Write another implementation for each property value. 
   Require much additional code, abstract classes and may lead to code duplication.
-* Get property as a boolean or enum parameter.
+* Get comparability property as a boolean or enum parameter.
   In this case, 
   we have to write explicit error-prone casts in each place where we require comparability.
 
