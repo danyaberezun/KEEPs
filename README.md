@@ -682,6 +682,44 @@ the bare types feature could be implemented as a syntactic sugar for the type wi
 As well as we could replace all star projections with implicit existential type parameter, 
 we could natively introduce refinement of the star projections in the smart-casts (and maybe slightly more).
 
+# Breaking changes
+
+## Resolution changes
+
+As we will extend the type hierarchy, it may affect the resolution based on the type.
+For example:
+
+```Kotlin
+interface A
+interface B : A
+
+interface Out<out T>
+interface OutB : Out<B>
+
+fun <T> f(b: B, out: Out<T>) {
+    fun A.foo() = "A"
+    fun T.foo() = "T"
+    
+    when (out) {
+        is OutB -> {
+            // we inferred that T :> B
+            
+            b.foo()
+            // was: resolved to A.foo()
+            // will be: resolved to A.foo() and T.foo(), ambiguity error
+        }
+        else -> TODO()
+    }
+}
+```
+
+As we only may infer new supertypes (and subtypes), 
+it will never lead to the resolution changes, 
+only to the new compilation errors. 
+But it is not a big deal as
+* One of the functions has to be a local function on the generic parameter, which is not a common case.
+* It may be automatically fixed with the migration tool.
+
 # Questions for implementation
 
 1. TODO: [Scala bugs](https://github.com/lampepfl/dotty/issues?q=label%3Aitype%3Abug+label%3Aarea%3Agadt)
