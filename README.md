@@ -622,11 +622,6 @@ we could not cast `Int` or `String` in the respecting branches to the type `T`.
 And at the moment we are trying to intersect them, 
 we had already lost the information about the local bounds of T.
 
-TODO: discuss.
-We could replace `Int` with `{Int & T}`.
-We could record a CFG node in type.
-Scala does not do this.
-
 # Related features
 
 ## Bare types
