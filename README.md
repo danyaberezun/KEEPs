@@ -517,6 +517,10 @@ More presicely:
 * ${B, C} :> A => B :> A$
 * $A = {B, C} => A :> C, B :> A$
 
+# Detection of the unreachable code
+
+TODO: We forgot to discuss this part. Currently working on it. 
+
 # Changes to the type checking
 
 ## New type of statements
@@ -621,6 +625,10 @@ As we do not know the expected type of the expression,
 we could not cast `Int` or `String` in the respecting branches to the type `T`.
 And at the moment we are trying to intersect them, 
 we had already lost the information about the local bounds of T.
+
+## Exhaustiveness check
+
+TODO: We forgot to discuss this part. Currently working on it.
 
 # Related features
 
