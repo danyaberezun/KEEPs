@@ -519,7 +519,21 @@ More presicely:
 
 # Detection of the unreachable code
 
-TODO: We forgot to discuss this part. Currently working on it. 
+To detect unreachable code, or conditions that are unsatisfiable, 
+we have to run the same inference algorithm and then check if the inferred constraints are satisfiable.
+
+The constraints are satisfiable if 
+for each type parameter and temporal variable (representing a real type), 
+there is at least one type satisfying all constraints.
+To check this, we have to run the following algorithm:
+
+1. Find all classes that are the least common supertypes for all lowerbounds.
+2. Check that any of those classes is a subtype of all upperbounds.
+
+If there is no such class, then the constraints are unsatisfiable and condition is always false.
+
+The simple, but incomplete approximation of this property is
+to check whether all of the lowerbounds are subtypes of all of the upperbounds.
 
 # Changes to the type checking
 
@@ -628,7 +642,47 @@ we had already lost the information about the local bounds of T.
 
 ## Exhaustiveness check
 
-TODO: We forgot to discuss this part. Currently working on it.
+The issue with the exhaustiveness check is that such a code is marked as non-exhaustive (Both K1 and K2):
+
+```Kotlin
+interface A
+interface B
+
+sealed interface I<T>
+class IA : I<A>
+class IB : I<B>
+
+fun <T : A> f(i: I<T>) {
+    when (i) {
+        is IA -> TODO()
+    }
+}
+```
+
+And such a code is marked as correct in K2 and failed with incompatible types error in K1:
+
+```Kotlin
+interface A
+interface B
+
+sealed interface I<T>
+class IA : I<A>
+class IB : I<B>
+
+fun <T : A> f(i: I<T>) {
+    when (i) {
+        is IA -> TODO()
+        is IB -> TODO()
+    }
+}
+```
+
+So Kotlin for now does not check the exhaustiveness of the branches based on the type parameters.
+But this feature is usually associated with the GADT inference.
+
+To implement such a check, we may re-use the same algorithm as for the inference of unsatisfiable conditions.
+In this case, we have to infer constraints for each unmatched class  
+and remove classes that are leading to unsatisfiable constraints. 
 
 # Related features
 
