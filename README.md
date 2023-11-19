@@ -296,19 +296,6 @@ https://github.com/milessabin/shapeless
 
 https://github.com/owlbarn/owl
 
-For Scala:
-
-Akka: Although not specifically a GADT-focused library, Akka (a toolkit
-for building highly concurrent, distributed, and resilient
-message-driven applications) has utilized advanced type system features
-in Scala, including GADTs, for internal implementations to enforce
-certain invariants at compile-time.
-
-Slick: Slick (Scala Language-Integrated Connection Kit) is Functional
-Relational Mapping (FRM) library for Scala that makes it easy to work
-with stored data in a type-safe manner. It uses GADTs to represent
-abstract syntax trees for database queries in a type-safe manner.
-
 https://www.informatik.uni-marburg.de/ kos/papers/gpce10.pdf
 
 http://www.cs.nott.ac.uk/~psznhn/Publications/icfp2005.pdf
@@ -346,7 +333,7 @@ scrutenee, \" $T$ is a "type of pattern".
 
 2.  Intersect types $S$ and $T$
 
-3.  Find all common classes (super-types) of types $S$ and $T$, denoted 
+3.  Find all least common classes (super-types) of types $S$ and $T$, denoted 
     as $T_n$
 
 4.  For each class $T_n$ do:
@@ -690,7 +677,7 @@ and remove classes that are leading to unsatisfiable constraints.
 
 Gadt inference would be useful to infer bounds for bare types as well. 
 Bare types are the types with omitted type parameters.
-They are designed to use in a cases like this:
+They are designed to use in cases like this:
 
 ```Kotlin
 fun <T> foo(l: Collection<T>) {
