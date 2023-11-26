@@ -454,33 +454,53 @@ For flexible types, we have to run the algorithm on their upper bound as it is t
 
 #### Constant (effectively invariant) parameter
 
+Let's elaborate this part of the algorithm:
+
 > If any of the parameters do not depend on the co- and contra- variant positions, then that parameter is equal to the real parameter
 
-If we would like to generate a constraints from types `List<T>` and `List<Serializable>`, we would not be able to get any information about bounds of T. 
-For example, T could be an `Any` type while the real type may be `Int` which is actually `Serializable`.
+If we would like to generate constraints from information that 
+types `List<T>` and `List<Serializable>` have a common value,
+we would not be able to get any information about bounds of T.
+To demonstrate, we could consider such a code:
 
-On the other hand, If we consider such a type:
+```Kotlin
+fun <T> foo(list: List<T>, serializableList: List<Serializable>, value: T) {
+    if (list === serializableList) {
+        // Based on the condition, we know that 
+        // types `List<T>` and `List<Serializable>` have a common value here
+        // But the following cast is not valid (see bar function):
+        val serializableValue: Serializable = value
+    }
+}
+
+fun bar() {
+    val list = listOf(1)
+    val comparableInt = object : Comparable<Int> {
+        override fun compareTo(other: Int): Int = 0
+    }
+    // This is the proper call of foo function, while T is not a subtype of Serializable
+    foo<Comparable<Int>>(list, list, comparableInt)
+}
+```
+
+On the other hand, if we consider such a type:
 
 ```Kotlin
 interface SerializableList : List<Serializable>
 ```
 
-And would like to generate a constraints from types `List<T>` and `SerializableList`,
-then we may successfully infer that `T :> Serializable`.
-As there is the guarantee that the real (runtime) parameter of a type projected on `List` is actually `Serializable`.
+And would like to generate constraints from types `List<T>` and `SerializableList`,
+if we follow the algorithm, we will consider a pair `List<T>` and `List<Serializable>` as before.
+But in this case, we are able 
+to infer that `T :> Serializable` 
+as we know that `Serializable` is an actual type argument of the runtime value's type projected on `List`.
+Consequently, this value may be cast to `List<Serializable>` and `List<Any>` and nothing else.
 
-> the transitive closure S∗(T) of the set of type supertypes S(T : \(S_1\), . . . , \(S_m\)) = {\(S_1\), . . . , \(S_m\)} ∪ S(\(S_1\)) ∪ . . . ∪ S(\(S_m\))
-> is consistent, i.e., does not contain two parameterized types with different type arguments.
-
-Then, based of the information that `List<T>` is a supertype of `List<Serializable>`, with the consideration of type-parameter's variance, we are able to infer that `T :> Serializable`.
-
-Moreover, even in the case of such a type:
+Moreover, this also works for such a type:
 
 ```Kotlin
 interface InvariantList<T> : List<T>
 ```
-
-We are able to infer the same constraints from the pair `List<T>` and `InvariantList<Serializable>` due to the same arguments.
 
 ## Constraints resolution
 
