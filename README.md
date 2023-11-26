@@ -324,8 +324,8 @@ The algorithm consists of two parts, generation of subtyping and equality constr
 ## Generation of constraints
 
 There is the type of variable and runtime value. *Type* consists of
-classes and their type parameters. We can project type on class and get
-the type parameters of that class for that type. Let $S$ be a type of
+classifiers and their type parameters. We can project type on classifier and get
+the type parameters of that classifier for that type. Let $S$ be a type of
 scrutenee, \" $T$ is a "type of pattern".
 
 1.  If $S$ is an intersection type, then run the following algorithm for
@@ -333,22 +333,22 @@ scrutenee, \" $T$ is a "type of pattern".
 
 2.  Intersect types $S$ and $T$
 
-3.  Find all least common classes (super-types) of types $S$ and $T$, denoted 
+3.  Find all least common classifiers (super-types) of types $S$ and $T$, denoted 
     as $T_n$
 
-4.  For each class $T_n$ do:
+4.  For each classifier $T_n$ do:
 
     1.  Generate type parameters:
 
-        1.  Project type $S$ on class $T_n$ and receive type parameters
+        1.  Project type $S$ on classifier $T_n$ and receive type parameters
             $P_{S}^{T_n}$ storing for each parameter information if it
             depends on co- and contra- variant positions in the lowest
-            class of $S$.
+            classifier of $S$.
 
-        2.  Project type $T$ on class $T_n$ and receive type parameters
+        2.  Project type $T$ on classifier $T_n$ and receive type parameters
             $P_{T}^{T_n}$ storing for each parameter information if it
             depends on co- and contra- variant positions in the lowest
-            class of $T$.
+            classifier of $T$.
 
     2.  Generate constraints: for each parameter position
 
@@ -372,7 +372,7 @@ scrutenee, \" $T$ is a "type of pattern".
                 the constraint $p_?^{T_n} :> p_?^{T_n}$ for that
                 position.
 
-            4.  If both of them depend on the co- and contra- variant
+            3.  If both of them depend on the co- and contra- variant
                 positions, then we only can establish that both of them
                 are subtypes (for covariant position) or supertypes (for
                 contravariant position) of the real type, and we could
@@ -549,10 +549,10 @@ for each type parameter and temporal variable (representing a real type),
 there is at least one type satisfying all constraints.
 To check this, we have to run the following algorithm:
 
-1. Find all classes that are the least common supertypes for all lowerbounds.
-2. Check that any of those classes is a subtype of all upperbounds.
+1. Find all types that are the least common supertypes for all lowerbounds.
+2. Check that any of those types is a subtype of all upperbounds.
 
-If there is no such class, then the constraints are unsatisfiable and condition is always false.
+If there is no such a type, then the constraints are unsatisfiable and condition is always false.
 
 The simple, but incomplete approximation of this property is
 to check whether all of the lowerbounds are subtypes of all of the upperbounds.
@@ -703,8 +703,8 @@ So Kotlin for now does not check the exhaustiveness of the branches based on the
 But this feature is usually associated with the GADT inference.
 
 To implement such a check, we may re-use the same algorithm as for the inference of unsatisfiable conditions.
-In this case, we have to infer constraints for each unmatched class  
-and remove classes that are leading to unsatisfiable constraints. 
+In this case, we have to infer constraints for each unmatched classifier
+and remove classifiers that are leading to unsatisfiable constraints. 
 
 # Related features
 
