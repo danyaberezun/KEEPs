@@ -389,21 +389,36 @@ The main difference arises from the following paragraph of the Kotlin's specific
 For instance, the following code:
 
 ```Scala
-trait A[+T]
-trait B[T] extends A[T]
-class C extends B[Object] with A[Int]
+trait Func[-A, +B]
+trait Identity[X] extends Func[X, X]
+trait FalseIdentity extends Identity[Int], Func[Any, Int]
 ```
 
 is valid in Scala while the same code in Kotlin:
 
 ```Kotlin
-interface A<in T>
-interface B<T> : A<T>
-class C : B<Object>, A<Int>
+interface Func<in A, out B>
+interface Identity<X> : Func<X, X>
+interface FalseIdentity : Identity<Int>, Func<Any, Int>
 ```
 
-fails to compile with error: "Type parameter `T` of
-'`A`' has inconsistent values: `Object, Int`".
+fails to compile with error:
+`Type parameter B of 'Func' has inconsistent values: Int, Any`.
+
+As a result for the code like this:
+
+```Kotlin
+fun <A, B> foo(func: Func<A, B>) = when (func) {
+    is Identity<*> -> {
+        val b: B = TODO() as A
+    }
+    else -> TODO()
+}
+```
+
+We are able to infer relation $A <: B$ in Kotlin, 
+while this is not a case for Scala as we may call this function with `FalseIdentity` as an argument, 
+consequently, A would be `Any` and B would be `Int` which does not satisfy $A <: B$.
 
 ### Special cases
 
