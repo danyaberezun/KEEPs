@@ -823,34 +823,7 @@ But it is not a big deal as
 
 # Examples
 
-1.  In such code:
-
-    ```Kotlin
-    interface Func<in A, out B>
-
-    class Identity<X> : Func<X, X>
-
-    fun <A, B> foo(func: Func<A, B>): B {
-        when (func) {
-            is Identity<*> -> {
-                val b: B = (TODO() as A) // valid assignment
-            }
-            else -> TODO()
-        }
-    }
-    ```
-
-    We will get a constraints $B :> * :> A$ and could establish that $A$
-    is a subtype of $B$. This could not be inferred in Scala as such
-    a class:
-
-    ```Scala
-    class FalseIdentity extends Identity[Any] with Func[Any, Nothing]
-    ```
-
-    would be valid for them but not for Kotlin.
-
-2.  For code showing the unsoundness of the GADTs in Scala 2:
+1.  For code showing the unsoundness of the GADTs in Scala 2:
 
     ```Kotlin
     open class C<out T>
@@ -877,5 +850,3 @@ But it is not a big deal as
     generate existential variable in that place and add a constraint for
     it, but I guess that it would not worth it, except if Kotlin already
     supports an existential variables in the compiler)
-
-3.  Example with disjunction constraints. (too hard, todo)
