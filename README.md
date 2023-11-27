@@ -538,24 +538,6 @@ More presicely:
 * ${B, C} :> A => B :> A$
 * $A = {B, C} => A :> C, B :> A$
 
-# Detection of the unreachable code
-
-To detect unreachable code, or conditions that are unsatisfiable, 
-we have to run the same inference algorithm and then check if the inferred constraints are satisfiable.
-
-The constraints are satisfiable if 
-for each type parameter and temporal variable (representing a real type), 
-there is at least one type satisfying all constraints.
-To check this, we have to run the following algorithm:
-
-1. Find all types that are the least common supertypes for all lowerbounds.
-2. Check that any of those types is a subtype of all upperbounds.
-
-If there is no such a type, then the constraints are unsatisfiable and condition is always false.
-
-The simple, but incomplete approximation of this property is
-to check whether all of the lowerbounds are subtypes of all of the upperbounds.
-
 # Changes to the type checking
 
 ## New type of statements
@@ -661,50 +643,6 @@ we could not cast `Int` or `String` in the respecting branches to the type `T`.
 And at the moment we are trying to intersect them, 
 we had already lost the information about the local bounds of T.
 
-## Exhaustiveness check
-
-The issue with the exhaustiveness check is that such a code is marked as non-exhaustive (Both K1 and K2):
-
-```Kotlin
-interface A
-interface B
-
-sealed interface I<T>
-class IA : I<A>
-class IB : I<B>
-
-fun <T : A> f(i: I<T>) {
-    when (i) {
-        is IA -> TODO()
-    }
-}
-```
-
-And such a code is marked as correct in K2 and failed with incompatible types error in K1:
-
-```Kotlin
-interface A
-interface B
-
-sealed interface I<T>
-class IA : I<A>
-class IB : I<B>
-
-fun <T : A> f(i: I<T>) {
-    when (i) {
-        is IA -> TODO()
-        is IB -> TODO()
-    }
-}
-```
-
-So Kotlin for now does not check the exhaustiveness of the branches based on the type parameters.
-But this feature is usually associated with the GADT inference.
-
-To implement such a check, we may re-use the same algorithm as for the inference of unsatisfiable conditions.
-In this case, we have to infer constraints for each unmatched classifier
-and remove classifiers that are leading to unsatisfiable constraints. 
-
 # Related features
 
 ## Bare types
@@ -764,6 +702,68 @@ With such a feature,
 the bare types feature could be implemented as a syntactic sugar for the type with existential type parameters.
 As well as we could replace all star projections with implicit existential type parameter, 
 we could natively introduce refinement of the star projections in the smart-casts (and maybe slightly more).
+
+## Dead code detection
+
+To detect unreachable code, or conditions that are unsatisfiable,
+we have to run the same inference algorithm and then check if the inferred constraints are satisfiable.
+
+The constraints are satisfiable if
+for each type parameter and temporal variable (representing a real type),
+there is at least one type satisfying all constraints.
+To check this, we have to run the following algorithm:
+
+1. Find all types that are the least common supertypes for all lowerbounds.
+2. Check that any of those types is a subtype of all upperbounds.
+
+If there is no such a type, then the constraints are unsatisfiable and condition is always false.
+
+The simple, but incomplete approximation of this property is
+to check whether all of the lowerbounds are subtypes of all of the upperbounds.
+
+### Exhaustiveness check
+
+The issue with the exhaustiveness check is that such a code is marked as non-exhaustive (Both K1 and K2):
+
+```Kotlin
+interface A
+interface B
+
+sealed interface I<T>
+class IA : I<A>
+class IB : I<B>
+
+fun <T : A> f(i: I<T>) {
+    when (i) {
+        is IA -> TODO()
+    }
+}
+```
+
+And such a code is marked as correct in K2 and failed with incompatible types error in K1:
+
+```Kotlin
+interface A
+interface B
+
+sealed interface I<T>
+class IA : I<A>
+class IB : I<B>
+
+fun <T : A> f(i: I<T>) {
+    when (i) {
+        is IA -> TODO()
+        is IB -> TODO()
+    }
+}
+```
+
+So Kotlin for now does not check the exhaustiveness of the branches based on the type parameters.
+But this feature is usually associated with the GADT inference.
+
+To implement such a check, we may re-use the same algorithm as for the inference of unsatisfiable conditions.
+In this case, we have to infer constraints for each unmatched classifier
+and remove classifiers that are leading to unsatisfiable constraints.
 
 # Breaking changes
 
