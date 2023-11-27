@@ -266,12 +266,11 @@ There are several papers that discuss the use-cases of GADTs[links].
 The main mentioned advantages are:
 
 * Well-typed LR Parser. 
-  Gadt allows eliminating some runtime checks which improve performance over non-GADTs implementations.
-* Efficient AVL Tree.
-  The performance comparison shows
-  that the GADTs implementation can improve insertion speed by a factor of 1.7 compared to traditional non-GADTs implementations.
+  GADT allows eliminating some runtime checks which improve performance over non-GADTs implementations.
+* Type-safe AVL Tree.
+  GADT with existential types allows implementing AVL Tree with type-level control of a balance factor.
 * Typed Printf/Scanf Formats.
-  They proposed using GADTs instead of strings to represent printf/scanf formats in OCaml, 
+  There is a proposal to use GADTs instead of strings to represent printf/scanf formats in OCaml, 
   which not only improves performance but also fixes potential bugs and stabilizes the code.
 * Event Processing Optimizations.
   GADTs enabled a number of optimizations in the area of event processing, 
