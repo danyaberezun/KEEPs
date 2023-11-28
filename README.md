@@ -46,6 +46,8 @@ def eval[T](e: Expr[T]): T = e match
 GADTs have a number of applications, including DSls definition, strongly-typed evaluators,
 generic pretty-printing, generic traversals and queries, databases, and typed parsing.
 
+TODO: introduce unified notation for "matching"
+
 Unfortunately, *`Kotlin` has no support for dependent pattern matching while allowing one to actually define a `GADT`*.
 This leads to some kind of inconsistency in the language design and unlikely compiler behavior.
 For example, the following code does not type check, i.e., type-checker is not able to locally cast `e.i`,
@@ -73,17 +75,21 @@ fun <T> eval(e: Expr2<T>): T = when (e) {
 }
 ```
 
-***The paper presents a proposal how the current type-checker can be modified in order to cover this `gap` in the language design by adding support for dependent pattern-matching.***
+TODO: we do not add generalized pattern matching, but we add GADT inference
+
+***The paper presents a proposal how the current type-checker can be modified in order to cover this __gap__ in the language design by adding support for dependent pattern-matching.***
 
 ***Moreover, adding the mechanism to support for generalized pattern matching in type-checker also improves smart-casts behaviour and allows one to get rid of a number of unsafe casts in source code.*** (See next section for details)
 
 
 ## The Problem Scope (or Accompanying Benefits)
 
-In general, GADT inference is associated with the pattern-matching when we match a value of the sum type on one of their constructors and able to specialize the type parameters of the sum type based on their instances in the specific constructor.
+In general, GADT inference is associated with pattern-matching when we match a value of the sum type on one of their constructors and are able to specialize the type parameters of the sum type based on their instances in the specific constructor.
 It is how the GADT inference works in the functional languages with their system of subtyping.
-While it is not the case for languages with OOP-style subtyping as it is shown in \[ref to C# paper\] and Scala 3 implementation (see an **Bounds inference algorithm** section below for details).
-In fact, we are able to run GADT inference in the moment we are identifying that there is a value in the program that has two types, i.e., sum type and type of the specific constructor in case of functional languages, and two arbitrary types in case of Kotlin.
+While it is not the case for languages with OOP-style subtyping as it is shown in 
+[first formalization for C#](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/gadtoop.pdf) 
+and Scala 3 implementation (see a **Bounds inference algorithm** section below for details).
+In fact, we are able to run GADT inference at the moment we are identifying that there is a value in the program that has two types, i.e., sum type and type of the specific constructor in the case of functional languages, and two arbitrary types in the case of Kotlin.
 Luckily, in Kotlin, in order to support smart casts, there exists a kind of flow typing that extracts operational information about different types of a value in a specific branch.
 Since this information is not limited to the `when`-expressions only, we are able to successfully infer types not only in case of `when`-expressions but also in branches of other control-flow operators like conditional branching and so on.
 For example, all four examples below are well-typed as in all these cases we have an information that there is a value that is subtype of both `ExprIntLit` and `Expr<T>`.
@@ -124,9 +130,11 @@ fun <T> eval(e1: Expr<T>, e2: Expr<Int>): T {
 }
 ```
 
-
-The current implementation that collects such statements only for variables (as temporal values are not eligible for smart casts) making last three examples ill-typed.
-But since temporal values are outfiltered on the very last stage, we can easily collect these statements for any values.
+The current implementation that collects such statements only for variables
+(as temporary values are not eligible for smart casts) 
+is making the last three examples ill-typed.
+But since temporary values are outfiltered at the very last stage,
+we can easily collect these statements for any values.
 As a consequence, even the following case becomes well-typed.
 
 ```Kotlin
@@ -142,8 +150,7 @@ fun <T> eval(e: Expr<T>): T {
 
 ## Generic use-cases
 
-[Source and more
-examples](https://chrilves.github.io/posts/gadts_by_use_cases/)
+[Source and more examples](https://chrilves.github.io/posts/gadts_by_use_cases/)
 
 ### Runtime subtyping evidence
 
@@ -178,7 +185,7 @@ Currently available solutions:
 
 * Write another implementation for each property value. 
   Require much additional code, abstract classes and may lead to code duplication.
-* Get comparability property as a boolean or enum parameter.
+* Get comparability property as a boolean, enum parameter, or comparator.
   In this case, 
   we have to write explicit error-prone casts in each place where we require comparability.
 
@@ -237,9 +244,9 @@ fun <A> Chart<A>.myDraw(chartData: A): Unit =
   }
 ```
 
-Programmer have to explicitly cast data to PieData as he is sure that it
-is always successful. In this case, it is true and could be inferenced
-gadt inference. Then code could become more type-safe and less verbose:
+The programmer has to explicitly cast data to PieData as he is sure that it is always successful. 
+In this case, it is true and could be inferenced by gadt inference. 
+Then code could become more type-safe and less verbose:
 
 ```Kotlin
 fun <A> Chart<A>.myDraw(chartData: A): Unit =
@@ -323,9 +330,9 @@ The algorithm consists of two parts, generation of subtyping and equality constr
 ## Generation of constraints
 
 There is the type of variable and runtime value. *Type* consists of
-classifiers and their type parameters. We can project type on classifier and get
+classifiers and their type parameters. We can project a type on classifier and get
 the type parameters of that classifier for that type. Let $S$ be a type of
-scrutenee, \" $T$ is a "type of pattern".
+scrutinee, $T$ is a "type of pattern".
 
 1.  If $S$ is an intersection type, then run the following algorithm for
     each type in intersection.
@@ -379,7 +386,7 @@ scrutenee, \" $T$ is a "type of pattern".
 
 ### Compared to Scala
 
-The algorithm is quite different from the Scala's algorithm and may infer bounds in more cases.
+The algorithm is quite different from Scala's algorithm and may infer bounds in more cases.
 The main difference arises from the following paragraph of the Kotlin's specification:
 
 > the transitive closure S∗(T) of the set of type supertypes S(T : \(S_1\), . . . , \(S_m\)) = {\(S_1\), . . . , \(S_m\)} ∪ S(\(S_1\)) ∪ . . . ∪ S(\(S_m\))
@@ -404,7 +411,7 @@ interface FalseIdentity : Identity<Int>, Func<Any, Int>
 fails to compile with error:
 `Type parameter B of 'Func' has inconsistent values: Int, Any`.
 
-As a result for the code like this:
+As a result, for the code like this:
 
 ```Kotlin
 fun <A, B> foo(func: Func<A, B>) = when (func) {
@@ -442,12 +449,12 @@ fun <A, B> coerce(eqT: EqT<B, A>, a: A): B =
 
 We will result a constraints $B = \*$, $\* = A$
 and could not establish that $A = B$ as we do not even know if these stars are the same.
-So we have to replace all star projections with temporal type variables (standing for the real type)
+So we have to replace all star projections with temporary type variables (standing for the real type)
 to correctly follow the transitive relations on them.
 
 #### Flexible types
 
-For flexible types, we have to run the algorithm on their upper bound as it is the type which is guaranteed to be a supertype of the real type.
+For flexible types, we have to run the algorithm on their upper bound as it is the type that is guaranteed to be a supertype of the real type.
 
 ### Examples
 
@@ -490,9 +497,8 @@ interface SerializableList : List<Serializable>
 
 And would like to generate constraints from types `List<T>` and `SerializableList`,
 if we follow the algorithm, we will consider a pair `List<T>` and `List<Serializable>` as before.
-But in this case, we are able 
-to infer that `T :> Serializable` 
-as we know that `Serializable` is an actual type argument of the runtime value's type projected on `List`.
+But in this case, we are able to infer that `T :> Serializable` 
+as we know that `Serializable` is an actual type argument of the runtime value's type projected on `List` classifier.
 Consequently, this value may be cast to `List<Serializable>` and `List<Any>` and nothing else.
 
 Moreover, this also works for such a type:
@@ -505,8 +511,8 @@ interface InvariantList<T> : List<T>
 
 This part is quite straightforward:
 
-1. If any of the types in the constraint is a type parameter, then just record a constraints.
-2. If any of the types is the temporal type variable, then record a bound for this variable. 
+1. If any of the types in the constraint is a type parameter, then record a constraint.
+2. If any of the types is the temporary type variable, then record a bound for this variable. 
    And generate new transitive constraints from this variable. 
    (For new upper bound, generate constraints with all lower bounds and vice versa)
 3. If both of the types are simple types, 
@@ -521,24 +527,24 @@ This part is quite straightforward:
 
 If we would like to satisfy a constraint `A :> B & C` we result in a
 disjoint constraints `A :> B | A :> C` which is not easy to solve. 
-As I got from [this moment of presentation](https://youtu.be/VV9lPg3fNl8?t=1391), 
-if they met the situation that leads to disjoint constraints, 
+As stated at [this moment of presentation](https://youtu.be/VV9lPg3fNl8?t=1391), 
+if Scala 3 met the situation that leads to disjoint constraints, 
 they just do not add such constraints. 
 On the next slide, 
-they said that if all-except-one of the disjoint constraints are unsatisfied, 
-then we could process such a constraint.
+stated that in case if all-except-one of the disjoint constraints are unsatisfied, 
+then such a constraint could be processed.
 
 #### Flexible types
 
-For flexible types we have to follow their subtyping rules. 
+For flexible types, we have to follow their subtyping rules. 
 [Explanation](https://github.com/JetBrains/kotlin/blob/master/spec-docs/flexible-java-types.md).
-More presicely:
+More precisely:
 
 * $A :> {B, C} => A :> C$
 * ${B, C} :> A => B :> A$
 * $A = {B, C} => A :> C, B :> A$
 
-# Changes to the type checking
+# Changes to type checking
 
 ## New type of statements
 
@@ -546,7 +552,7 @@ We introduce a new type of statements collected by the data-flow analysis, calle
 Type intersection is a set of types 
 that are known to have a common value in the specific node of the control-flow graph.
 
-The issue with such statements is that they are not eligible for intersection.
+The issue with such statements is that they are not eligible for intersection of flows.
 For example, in the following code:
 
 ```Kotlin
@@ -592,12 +598,12 @@ fun <A> Chart<A>.myDraw(chartData: A): Unit =
     }
 ```
 
-inference of the bounds from one variable affects the type of another variable
+inference of the bounds from one variable affects the type of another variable, 
 which could not be easily represented in the current type-checker. 
 
 ## Proper processing of the expected type
 
-To incorporate a new bound into the subtyping check is not enough as for example for when expression, 
+To incorporate a new bound into the subtyping check is not enough as, for example, for when expression, 
 we have such a hierarchy of nodes:
 
 * *when* expression
@@ -606,16 +612,16 @@ we have such a hierarchy of nodes:
 
 And we may infer the bounds only in the "*when* branch body" node, 
 but would like to use them in the "*when* expression 
-while checking conformance of the expected type to the provided one.
+while checking the conformance of all the branches to the expected type.
 
 The current implementation checks the expected type in the place where it was generated, 
-while to correctly take GADT inference into account, 
+while, to correctly take GADT inference into account, 
 we have to check the expected type more often
 and in case of success, replace the inferred type of the expression with the expected one.
 
 ## Case without an expected type
 
-While to typecheck the expression with the expected type is not a problem and this code could be easily typechecked:
+While to typecheck the expression with the expected type is not a problem, and this code could be easily typechecked:
 
 ```Kotlin
 fun <T> foo(v: Box<T>) {
@@ -664,7 +670,7 @@ Type parameters of bare types are inferred from the type of the scrutinee.
 Inference of the type parameters is highly related to the GADT inference.
 We have to infer all the bounds for the type parameters of the cast type 
 based on the information that the value is both of original type and cast type with all arguments as `*`.
-As the algorithm has to replace the star projections with temporal type variables 
+As the algorithm has to replace the star projections with temporary type variables 
 (to manage constraints like $B :> * :> A$),
 it is also inferring the bounds for such variables.
 The next step would be to encode the type parameters to satisfy inferred bounds.
@@ -709,7 +715,7 @@ To detect unreachable code, or conditions that are unsatisfiable,
 we have to run the same inference algorithm and then check if the inferred constraints are satisfiable.
 
 The constraints are satisfiable if
-for each type parameter and temporal variable (representing a real type),
+for each type parameter and temporary variable (representing a real type),
 there is at least one type satisfying all constraints.
 To check this, we have to run the following algorithm:
 
