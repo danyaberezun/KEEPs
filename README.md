@@ -540,9 +540,9 @@ For flexible types, we have to follow their subtyping rules.
 [Explanation](https://github.com/JetBrains/kotlin/blob/master/spec-docs/flexible-java-types.md).
 More precisely:
 
-* $A :> {B, C} => A :> C$
-* ${B, C} :> A => B :> A$
-* $A = {B, C} => A :> C, B :> A$
+* $A :> \{B, C\} => A :> C$
+* $\{B, C\} :> A => B :> A$
+* $A = \{B, C\} => A :> C, B :> A$
 
 # Changes to type checking
 
