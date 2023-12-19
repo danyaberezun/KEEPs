@@ -46,13 +46,10 @@ def eval[T](e: Expr[T]): T = e match
 GADTs have a number of applications, including DSls definition, strongly-typed evaluators,
 generic pretty-printing, generic traversals and queries, databases, and typed parsing.
 
-TODO: introduce unified notation for "matching"
-
-Unfortunately, *`Kotlin` has no support for dependent pattern matching while allowing one to actually define a `GADT`*.
+Unfortunately, *`Kotlin` has no support for generalized pattern matching while allowing one to actually define a `GADT`*.
 This leads to some kind of inconsistency in the language design and unlikely compiler behavior.
 For example, the following code does not type check, i.e., type-checker is not able to locally cast `e.i`,
 even though a type checker has the all necessary information.
-
 
 ```Kotlin
 sealed class Expr<out T>
@@ -77,7 +74,7 @@ fun <T> eval(e: Expr2<T>): T = when (e) {
 
 TODO: we do not add generalized pattern matching, but we add GADT inference
 
-***The paper presents a proposal how the current type-checker can be modified in order to cover this __gap__ in the language design by adding support for dependent pattern-matching.***
+***The paper presents a proposal how the current type-checker can be modified in order to cover this __gap__ in the language design by adding support for generalized pattern-matching.***
 
 ***Moreover, adding the mechanism to support for generalized pattern matching in type-checker also improves smart-casts behaviour and allows one to get rid of a number of unsafe casts in source code.*** (See next section for details)
 
