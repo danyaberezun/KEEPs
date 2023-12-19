@@ -427,6 +427,8 @@ consequently, A would be `Any` and B would be `Int` which does not satisfy $A <:
 
 #### Star projections
 
+##### Identity
+
 The constraint generation is based on the transitive relation of both types to the real (runtime) type of the value.
 The only case where it would not work as expected is the star projections.
 The issue is that they all are equal to each other,
@@ -448,6 +450,79 @@ We will result a constraints $B = \*$, $\* = A$
 and could not establish that $A = B$ as we do not even know if these stars are the same.
 So we have to replace all star projections with temporary type variables (standing for the real type)
 to correctly follow the transitive relations on them.
+
+##### Binding time
+
+The other issue with star projections is that due to their identity absence,
+we are not able to express that they are unknown but were bound before usage.
+For example, in this case:
+
+```Kotlin
+open class Box<T>(val v: T)
+class BoxBox<T>(v: Box<T>) : Box<Box<T>>(v)
+
+fun <V> unsound(box1: Box<V>): V {
+    when (box1) {
+        is BoxBox<*> -> return Box(1)
+        else -> return box1.v
+    }
+}
+```
+
+We may infer in the first branch that $V = Box<\*>$, consequently, $V :> Box<Int>$.
+This is obviously unsound and may lead to class cast exception in the following code:
+
+```Kotlin
+fun foo() {
+    val bbs: BoxBox<String> = BoxBox(Box(""))
+    val bs: Box<String> = unsound1(bbs)
+    val s: String = bs.v // ClassCastException: Int cannot be cast to String
+}
+```
+
+The issue is that the $\*$ in the context of $V = Box<\*>$ is not a new unknown type, 
+but an unknown type used bound in the moment of `is BoxBox<*>` check.
+Currently, the Kotlin type system is unable to correctly express such a constraint.
+As a result, 
+the only simple way to handle such unsoundness will be to erase all lowerbounds containing any captured type.
+This issue does not limited to the star projections, and arises in case of both variance types:
+
+```Kotlin
+open class Box<T>(val v: T)
+class BoxBox<T>(v: Box<T>) : Box<Box<T>>(v)
+
+interface A
+interface B
+interface C : A, B
+interface D : C
+interface E : C
+
+fun <V> unsoundIn(box1: Box<V>, box2: BoxBox<in C>): V {
+    if (box1 === box2) {
+        return Box(object : B {})
+    }
+    return box1.v
+}
+
+fun <V> unsoundOut(box1: Box<V>, box2: BoxBox<out C>): V {
+    if (box1 === box2) {
+        return Box(object : E {})
+    }
+    return box1.v
+}
+
+fun classCastException() {
+    val bba: BoxBox<A> = BoxBox(Box(object : A {}))
+    val ba: Box<A> = unsoundIn(bba, bba)
+    val a: A = ba.v
+
+    val bbd: BoxBox<D> = BoxBox(Box(object : D {}))
+    val bd: Box<D> = unsoundOut(bbd, bbd)
+    val d: D = bd.v
+}
+```
+
+TODO: how to fix it?
 
 #### Flexible types
 
