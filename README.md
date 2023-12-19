@@ -518,6 +518,13 @@ This part is quite straightforward:
    and record a constraint according to position's variance.
    We also should track effectively invariant parameters in the same way as before.
 
+This algorithm is quite similar to the solution of the system during function call generics' inference,
+thus may reuse the same code.
+The main difference between them is that in case we are not able to solve any constraint precisely, 
+we are over-approximating it with simpler constraints in the case of generics' inference,
+but we have to under-approximate it in case of GADT inference.
+[Discussion for Scala 3](https://github.com/lampepfl/dotty/pull/5736)
+
 ### Special cases
 
 #### Intersection types
