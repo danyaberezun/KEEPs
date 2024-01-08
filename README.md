@@ -483,8 +483,6 @@ fun foo() {
 The issue is that the $\*$ in the context of $V = Box<\*>$ is not a new unknown type, 
 but an unknown type used bound in the moment of `is BoxBox<*>` check.
 Currently, the Kotlin type system is unable to correctly express such a constraint.
-As a result, 
-the only simple way to handle such unsoundness will be to erase all lowerbounds containing any captured type.
 This issue does not limited to the star projections, and arises in case of both variance types:
 
 ```Kotlin
@@ -522,7 +520,9 @@ fun classCastException() {
 }
 ```
 
-TODO: how to fix it?
+There are two possible solutions for this issue:
+* Easy one: Remove all lowerbounds that contains captured types. (Possible solution for now)
+* Hard one: Introduce an existential types. (Could not be easily implemented for now)
 
 #### Flexible types
 
