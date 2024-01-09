@@ -160,7 +160,7 @@ sealed interface EqT<A, B>{
 }
 
 sealed interface SubT<A, B>{
-  class Evidence<A, B : A> : EqT<A, B>
+  class Evidence<A, B : A> : SubT<A, B>
 }
 ```
 
@@ -381,6 +381,140 @@ scrutinee, $T$ is a "type of pattern".
                 contravariant position) of the real type, and we could
                 not get any information in this case.
 
+### Examples
+
+#### Simple
+
+Let's consider the following code:
+
+```Kotlin
+interface Expr<T>
+class ExprInt(var value: Int) : Expr<Int>
+
+fun <T> eval(e: Expr<T>): T = when (e) {
+    is ExprInt -> e.value
+}
+```
+
+In this case we will extract the statement that inside the `when` branch there exists a value with types `Expr<T>` and `ExprInt`.
+
+Let's execute the algorithm for this pair of types.
+
+They have the only least common classifier `Expr`.
+
+Type parameter for this classifier are `T` and `Int` respectively.
+
+As the type parameter position is invariant, we can establish that `T = Int`
+
+#### Multiple least common classifiers
+
+Let's consider the following code:
+
+```Kotlin
+interface Expr<T>
+interface Tag<T>
+interface TaggedExpr<E, T> : Expr<E>, Tag<T>
+interface ExprInt(var value: Int) : Expr<Int>, Tag<String>
+
+fun <E, T> eval(e: TaggedExpr<E, T>): E = when (e) {
+    is ExprInt -> e.value
+}
+```
+
+In this case we will extract the statement that inside the `when` branch there exists a value with types `TaggedExpr<T>` and `ExprInt`.
+
+Let's execute the algorithm for this pair of types.
+
+They have two least common classifiers `Expr` and `Tag`.
+
+* For `Expr` classifier, type parameter are `E` and `Int` respectively.
+  
+  As the type parameter position is invariant, we can establish that `E = Int`
+
+* For `Tag` classifier, type parameter are `T` and `String` respectively.
+
+  As the type parameter position is invariant, we can establish that `T = String`
+
+#### Non-invariant position
+
+Let's consider the other form of subtyping evidence:
+
+```Kotlin
+sealed interface SubT<A, out B> {
+  class Evidence<A> : SubT<A, A>
+}
+
+fun <A, B> coerce(subT: SubT<A, B>, a: A): B =
+  when (subT) {
+    is SubT.Evidence<*> -> a
+  }
+```
+
+In this case we will extract the statement that inside the `when` branch there exists a value with types `SubT<A, B>` and `SubT.Evidence<*>`.
+
+Let's execute the algorithm for this pair of types.
+
+They have the only least common classifier `SubT`.
+
+Type parameter for this classifier are `A, B` and `*, *` respectively.
+
+As the first type parameter position is invariant, we can establish that `A = *`
+
+As the second type parameter position is covariant, we can establish that `B :> *`, 
+as `*` stands for the runtime type while `B` is one of the possible types we are able to cast to the real type. 
+Due to the covariance of the type parameter, `B` have to be a supertype of the runtime type.
+
+And using the transitive closure from the next stage, we can establish that `A <: B`
+
+#### Constant (effectively invariant) parameter
+
+Let's elaborate this part of the algorithm:
+
+> If any of the parameters do not depend on the co- and contra- variant positions, then that parameter is equal to the real parameter
+
+If we would like to generate constraints from information that
+types `List<T>` and `List<Serializable>` have a common value,
+we would not be able to get any information about bounds of T.
+To demonstrate, we could consider such a code:
+
+```Kotlin
+fun <T> foo(list: List<T>, serializableList: List<Serializable>, value: T) {
+    if (list === serializableList) {
+        // Based on the condition, we know that 
+        // types `List<T>` and `List<Serializable>` have a common value here
+        // But the following cast is not valid (see bar function):
+        val serializableValue: Serializable = value
+    }
+}
+
+fun bar() {
+    val list = listOf(1)
+    val comparableInt = object : Comparable<Int> {
+        override fun compareTo(other: Int): Int = 0
+    }
+    // This is the proper call of foo function, while T is not a subtype of Serializable
+    foo<Comparable<Int>>(list, list, comparableInt)
+}
+```
+
+On the other hand, if we consider such a type:
+
+```Kotlin
+interface SerializableList : List<Serializable>
+```
+
+And would like to generate constraints from types `List<T>` and `SerializableList`,
+if we follow the algorithm, we will consider a pair `List<T>` and `List<Serializable>` as before.
+But in this case, we are able to infer that `T :> Serializable`
+as we know that `Serializable` is an actual type argument of the runtime value's type projected on `List` classifier.
+Consequently, this value may be cast to `List<Serializable>` and `List<Any>` and nothing else.
+
+Moreover, this also works for such a type:
+
+```Kotlin
+interface InvariantList<T> : List<T>
+```
+
 ### Compared to Scala
 
 The algorithm is quite different from Scala's algorithm and may infer bounds in more cases.
@@ -527,57 +661,6 @@ There are two possible solutions for this issue:
 #### Flexible types
 
 For flexible types, we have to run the algorithm on their upper bound as it is the type that is guaranteed to be a supertype of the real type.
-
-### Examples
-
-#### Constant (effectively invariant) parameter
-
-Let's elaborate this part of the algorithm:
-
-> If any of the parameters do not depend on the co- and contra- variant positions, then that parameter is equal to the real parameter
-
-If we would like to generate constraints from information that 
-types `List<T>` and `List<Serializable>` have a common value,
-we would not be able to get any information about bounds of T.
-To demonstrate, we could consider such a code:
-
-```Kotlin
-fun <T> foo(list: List<T>, serializableList: List<Serializable>, value: T) {
-    if (list === serializableList) {
-        // Based on the condition, we know that 
-        // types `List<T>` and `List<Serializable>` have a common value here
-        // But the following cast is not valid (see bar function):
-        val serializableValue: Serializable = value
-    }
-}
-
-fun bar() {
-    val list = listOf(1)
-    val comparableInt = object : Comparable<Int> {
-        override fun compareTo(other: Int): Int = 0
-    }
-    // This is the proper call of foo function, while T is not a subtype of Serializable
-    foo<Comparable<Int>>(list, list, comparableInt)
-}
-```
-
-On the other hand, if we consider such a type:
-
-```Kotlin
-interface SerializableList : List<Serializable>
-```
-
-And would like to generate constraints from types `List<T>` and `SerializableList`,
-if we follow the algorithm, we will consider a pair `List<T>` and `List<Serializable>` as before.
-But in this case, we are able to infer that `T :> Serializable` 
-as we know that `Serializable` is an actual type argument of the runtime value's type projected on `List` classifier.
-Consequently, this value may be cast to `List<Serializable>` and `List<Any>` and nothing else.
-
-Moreover, this also works for such a type:
-
-```Kotlin
-interface InvariantList<T> : List<T>
-```
 
 ## Constraints resolution
 
