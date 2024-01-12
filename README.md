@@ -559,9 +559,9 @@ consequently, A would be `Any` and B would be `Int` which does not satisfy $A <:
 
 ### Special cases
 
-#### Star projections
+#### Projections
 
-##### Identity
+##### Identity issue
 
 The constraint generation is based on the transitive relation of both types to the real (runtime) type of the value.
 The only case where it would not work as expected is the star projections.
@@ -582,12 +582,10 @@ fun <A, B> coerce(eqT: EqT<B, A>, a: A): B =
 
 We will result a constraints $B = \*$, $\* = A$
 and could not establish that $A = B$ as we do not even know if these stars are the same.
-So we have to replace all star projections with temporary type variables (standing for the real type)
-to correctly follow the transitive relations on them.
 
-##### Binding time
+##### Binding time issue
 
-The other issue with star projections is that due to their identity absence,
+The other issue with star projections is that
 we are not able to express that they are unknown but were bound before usage.
 For example, in this case:
 
@@ -616,7 +614,6 @@ fun foo() {
 
 The issue is that the $\*$ in the context of $V = Box<\*>$ is not a new unknown type, 
 but an unknown type used bound in the moment of `is BoxBox<*>` check.
-Currently, the Kotlin type system is unable to correctly express such a constraint.
 This issue does not limited to the star projections, and arises in case of both variance types:
 
 ```Kotlin
@@ -654,9 +651,17 @@ fun classCastException() {
 }
 ```
 
-There are two possible solutions for this issue:
-* Easy one: Remove all lowerbounds that contains captured types. (Possible solution for now)
-* Hard one: Introduce an existential types. (Could not be easily implemented for now)
+##### Solution
+
+The origin of these issues is that projections have to be captured before we infer anything.
+
+* Captured types have the identity, so it will be possible to infer a transitive constraints. 
+  And we will fix the first issue.
+
+* For the second issue, the resulting constraint will look like `V = Box<Captured(*)>`
+  which is not a supertype of any other `Box<...>`, so the second issue is fixed as well.
+
+The other solution (used in Scala 3) requires implementation of skolem (existential) types
 
 #### Flexible types
 
