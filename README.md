@@ -72,9 +72,7 @@ fun <T> eval(e: Expr2<T>): T = when (e) {
 }
 ```
 
-TODO: we do not add generalized pattern matching, but we add GADT inference
-
-***The paper presents a proposal how the current type-checker can be modified in order to cover this __gap__ in the language design by adding support for generalized pattern-matching.***
+***The paper presents a proposal how the current type-checker can be modified in order to cover this __gap__ in the language design by adding support for GADT inference.***
 
 ***Moreover, adding the mechanism to support for generalized pattern matching in type-checker also improves smart-casts behaviour and allows one to get rid of a number of unsafe casts in source code.*** (See next section for details)
 
@@ -299,8 +297,6 @@ https://github.com/milessabin/shapeless
 
 https://github.com/owlbarn/owl
 
-https://www.informatik.uni-marburg.de/ kos/papers/gpce10.pdf
-
 http://www.cs.nott.ac.uk/~psznhn/Publications/icfp2005.pdf
 
 http://gallium.inria.fr/~fpottier/publis/fpottier-regis-gianas-typed-lr.pdf
@@ -326,202 +322,47 @@ The algorithm consists of two parts, generation of subtyping and equality constr
 
 ## Generation of constraints
 
-There is the type of variable and runtime value. *Type* consists of
-classifiers and their type parameters. We can project a type on classifier and get
-the type parameters of that classifier for that type. Let $S$ be a type of
-scrutinee, $T$ is a "type of pattern".
+There are types that are known to be supertypes of some value denoted as $S_{i}$. 
+*Type* consists of classifiers and their type parameters.
+We can project a type on classifier and get the type parameters of that classifier for that type.
 
-1.  If $S$ is an intersection type, then run the following algorithm for
-    each type in intersection.
+Let $R$ be a runtime type of the value. 
+As we do not know the real type parameters of the runtime type, 
+while we are projecting a runtime type on any classifier, we are initializing them with the fresh type variables.
 
-2.  Intersect types $S$ and $T$
+Let's introduce an operation "project runtime type on classifier X upcasted from projection on Y".
+In this operation, we are not generating a new type variable for each type parameter.
+We are substituting the variables generated for classifier Y, 
+while going up in the hierarchy of classifiers from Y to X.
 
-3.  Find all least common classifiers (super-types) of types $S$ and $T$, denoted 
-    as $T_n$
+The algorithm consists of the following steps:
 
-4.  For each classifier $T_n$ do:
+1. If $S_{i}$ is an intersection type, 
+   add all types in the intersection to the set of types $S_{i}$ 
+   and process them as individual supertypes of the value.
+2. Project runtime type $R$ on lowest classifiers of each $S_{i}$ and denote them as $R_{S_{i}}$.
+3. As the runtime type is a subtype of all $S_{i}$, 
+   its projections are also subtypes of the corresponding $S_{i}$, 
+   so record the constraint $R_{S_{i}} :> S_{i}$ for the second phase.
+4. For each classifier $S_{i,j}$ which is the lowest upper bound of $S_{i}$ and $S_{j}$, 
+   project runtime type $R$ upcasted from $R_{S_{i}}$ and $R+{S_{j}}$ on $S_{i,j}$ 
+   and denote them as $R^{S_{i,j}}_{S_{i}}$ and $R^{S_{i,j}}_{S_{j}}$.
+5. Record the constraint $R^{S_{i,j}}_{S_{i}} = R^{S_{i,j}}_{S_{j}}$,
+   where = means syntactic equality of types.
 
-    1.  Generate type parameters:
+The last step of the algorithm justified by the following paragraph of the Kotlin's specification:
 
-        1.  Project type $S$ on classifier $T_n$ and receive type parameters
-            $P_{S}^{T_n}$ storing for each parameter information if it
-            depends on co- and contra- variant positions in the lowest
-            classifier of $S$.
+> the transitive closure S∗(T) of the set of type supertypes S(T : \(S_1\), . . . , \(S_m\)) = {\(S_1\), . . . , \(S_m\)} ∪ S(\(S_1\)) ∪ . . . ∪ S(\(S_m\))
+> is consistent, i.e., does not contain two parameterized types with different type arguments.
 
-        2.  Project type $T$ on classifier $T_n$ and receive type parameters
-            $P_{T}^{T_n}$ storing for each parameter information if it
-            depends on co- and contra- variant positions in the lowest
-            classifier of $T$.
-
-    2.  Generate constraints: for each parameter position
-
-        1.  If position is invariant, then $p_T^{T_n} = p_S^{T_n}$ for
-            that position.
-
-        2.  If it is not invariant, then
-
-            1.  If both of the parameters do not depend on the co- and
-                contra- variant positions then both of them are equal to
-                the real parameters and equal to each other.
-                Consequently, we can add the constraint
-                $p_T^{T_n} = p_S^{T_n}$ for that position.
-
-            2.  If any of the parameters do not depend on the parameters in
-                co- and contra- variant positions of the original type,
-                then that parameter is equal
-                to the real parameter and have to be a subtype (for
-                covariant position) or supertype (for contravariant
-                position) of the equal type. Consequently, we can add
-                the constraint $p_?^{T_n} :> p_?^{T_n}$ for that
-                position.
-
-            3.  If both of them depend on the co- and contra- variant
-                positions, then we only can establish that both of them
-                are subtypes (for covariant position) or supertypes (for
-                contravariant position) of the real type, and we could
-                not get any information in this case.
-
-### Examples
-
-#### Simple
-
-Let's consider the following code:
-
-```Kotlin
-interface Expr<T>
-class ExprInt(var value: Int) : Expr<Int>
-
-fun <T> eval(e: Expr<T>): T = when (e) {
-    is ExprInt -> e.value
-}
-```
-
-In this case we will extract the statement that inside the `when` branch there exists a value with types `Expr<T>` and `ExprInt`.
-
-Let's execute the algorithm for this pair of types.
-
-They have the only least common classifier `Expr`.
-
-Type parameter for this classifier are `T` and `Int` respectively.
-
-As the type parameter position is invariant, we can establish that `T = Int`
-
-#### Multiple least common classifiers
-
-Let's consider the following code:
-
-```Kotlin
-interface Expr<T>
-interface Tag<T>
-interface TaggedExpr<E, T> : Expr<E>, Tag<T>
-interface ExprInt(var value: Int) : Expr<Int>, Tag<String>
-
-fun <E, T> eval(e: TaggedExpr<E, T>): E = when (e) {
-    is ExprInt -> e.value
-}
-```
-
-In this case we will extract the statement that inside the `when` branch there exists a value with types `TaggedExpr<T>` and `ExprInt`.
-
-Let's execute the algorithm for this pair of types.
-
-They have two least common classifiers `Expr` and `Tag`.
-
-* For `Expr` classifier, type parameter are `E` and `Int` respectively.
-  
-  As the type parameter position is invariant, we can establish that `E = Int`
-
-* For `Tag` classifier, type parameter are `T` and `String` respectively.
-
-  As the type parameter position is invariant, we can establish that `T = String`
-
-#### Non-invariant position
-
-Let's consider the other form of subtyping evidence:
-
-```Kotlin
-sealed interface SubT<A, out B> {
-  class Evidence<A> : SubT<A, A>
-}
-
-fun <A, B> coerce(subT: SubT<A, B>, a: A): B =
-  when (subT) {
-    is SubT.Evidence<*> -> a
-  }
-```
-
-In this case we will extract the statement that inside the `when` branch there exists a value with types `SubT<A, B>` and `SubT.Evidence<*>`.
-
-Let's execute the algorithm for this pair of types.
-
-They have the only least common classifier `SubT`.
-
-Type parameter for this classifier are `A, B` and `*, *` respectively.
-
-As the first type parameter position is invariant, we can establish that `A = *`
-
-As the second type parameter position is covariant, we can establish that `B :> *`, 
-as `*` stands for the runtime type while `B` is one of the possible types we are able to cast to the real type. 
-Due to the covariance of the type parameter, `B` have to be a supertype of the runtime type.
-
-And using the transitive closure from the next stage, we can establish that `A <: B`
-
-#### Constant (effectively invariant) parameter
-
-Let's elaborate this part of the algorithm:
-
-> If any of the parameters do not depend on the co- and contra- variant positions, then that parameter is equal to the real parameter
-
-If we would like to generate constraints from information that
-types `List<T>` and `List<Serializable>` have a common value,
-we would not be able to get any information about bounds of T.
-To demonstrate, we could consider such a code:
-
-```Kotlin
-fun <T> foo(list: List<T>, serializableList: List<Serializable>, value: T) {
-    if (list === serializableList) {
-        // Based on the condition, we know that 
-        // types `List<T>` and `List<Serializable>` have a common value here
-        // But the following cast is not valid (see bar function):
-        val serializableValue: Serializable = value
-    }
-}
-
-fun bar() {
-    val list = listOf(1)
-    val comparableInt = object : Comparable<Int> {
-        override fun compareTo(other: Int): Int = 0
-    }
-    // This is the proper call of foo function, while T is not a subtype of Serializable
-    foo<Comparable<Int>>(list, list, comparableInt)
-}
-```
-
-On the other hand, if we consider such a type:
-
-```Kotlin
-interface SerializableList : List<Serializable>
-```
-
-And would like to generate constraints from types `List<T>` and `SerializableList`,
-if we follow the algorithm, we will consider a pair `List<T>` and `List<Serializable>` as before.
-But in this case, we are able to infer that `T :> Serializable`
-as we know that `Serializable` is an actual type argument of the runtime value's type projected on `List` classifier.
-Consequently, this value may be cast to `List<Serializable>` and `List<Any>` and nothing else.
-
-Moreover, this also works for such a type:
-
-```Kotlin
-interface InvariantList<T> : List<T>
-```
+As $R^{S_{i,j}}_{S_{i}}$ and $R^{S_{i,j}}_{S_{j}}$ are projections of the same runtime type on the same classifier,
+they are equal to each other.
 
 ### Compared to Scala
 
 The algorithm is quite different from Scala's algorithm and may infer bounds in more cases.
-The main difference arises from the following paragraph of the Kotlin's specification:
-
-> the transitive closure S∗(T) of the set of type supertypes S(T : \(S_1\), . . . , \(S_m\)) = {\(S_1\), . . . , \(S_m\)} ∪ S(\(S_1\)) ∪ . . . ∪ S(\(S_m\))
-> is consistent, i.e., does not contain two parameterized types with different type arguments.
+The main difference arises from the mentioned paragraph of the Kotlin's specification 
+which allows to simplify and enhance the algorithm.
 
 For instance, the following code:
 
@@ -553,142 +394,136 @@ fun <A, B> foo(func: Func<A, B>) = when (func) {
 }
 ```
 
-We are able to infer relation $A <: B$ in Kotlin, 
-while this is not a case for Scala as we may call this function with `FalseIdentity` as an argument, 
-consequently, A would be `Any` and B would be `Int` which does not satisfy $A <: B$.
+We are able to infer relation $A <: B$ in Kotlin,
+while this is not a case for Scala as we may call this function with `FalseIdentity` as an argument,
+consequently, $A$ would be `Any` and $B$ would be `Int` which does not satisfy $A <: B$.
 
-### Special cases
+### Examples
 
-#### Projections
+#### Simple example
 
-##### Identity issue
-
-The constraint generation is based on the transitive relation of both types to the real (runtime) type of the value.
-The only case where it would not work as expected is the star projections.
-The issue is that they all are equal to each other,
-and we are not able to distinguish them to make correct transitive relations.
-For example, in this case:
+Let's review the algorithm on the following example:
 
 ```Kotlin
-sealed interface EqT<A, B>{
-  class Evidence<X> : EqT<X, X>
-}
+interface Expr<T>
+interface ExprInt(var v: Int) : Expr<Int>
 
-fun <A, B> coerce(eqT: EqT<B, A>, a: A): B =
-  when (eqT) {
-    is EqT.Evidence<*> -> a
+fun <T> eval(e: Expr<T>): T =
+  when (e) {
+    is ExprInt -> e.v
   }
 ```
 
-We will result a constraints $B = \*$, $\* = A$
-and could not establish that $A = B$ as we do not even know if these stars are the same.
+As an input of the algorithm, we have two supertypes of the value `v`: `ExprInt` and `Expr<T>`.
 
-##### Binding time issue
+The demonstration of the algorithm is shown in the following diagram:
 
-The other issue with star projections is that
-we are not able to express that they are unknown but were bound before usage.
-For example, in this case:
+![](images/example_simple.png)
+
+Numbers in the image denote the corresponding steps of the algorithm.
+The upper part of the diagram shows the expected outcome of the second phase of the algorithm.
+Let's review the algorithm step by step.
+
+1. Not applicable.
+2. Project runtime type on `Expr` and `ExprInt` and generate a fresh variable `R` for the type parameter of `Expr`.
+3. Record the constraints $Expr<T> :> Expr<R>$ and $ExprInt :> ExprInt$.
+4. Project runtime type on `Expr` upcasted from the corresponding projections and receive types $Expr<R>$ and $Expr<Int>$.
+5. Record the constraint $Expr<R> = Expr<Int>$.
+
+#### Several least common classifiers
+
+Let's review the algorithm on the following example:
 
 ```Kotlin
-open class Box<T>(val v: T)
-class BoxBox<T>(v: Box<T>) : Box<Box<T>>(v)
+interface Expr<T>
+interface Tag<T>
+interface TExpr<E, T> : Expr<E>, Tag<T>
+interface ExprInt : Expr<Int>, Tag<String>
 
-fun <V> unsound(box1: Box<V>): V {
-    when (box1) {
-        is BoxBox<*> -> return Box(1)
-        else -> return box1.v
-    }
+fun <E, T> eval(e: TExpr<E, T>): E = when (e) {
+  is ExprInt -> e.value
 }
 ```
 
-We may infer in the first branch that $V = Box<\*>$, consequently, $V :> Box<Int>$.
-This is obviously unsound and may lead to class cast exception in the following code:
+As an input of the algorithm, we have two supertypes of the value `value`: `ExprInt` and `TExpr<E, T>`.
 
-```Kotlin
-fun foo() {
-    val bbs: BoxBox<String> = BoxBox(Box(""))
-    val bs: Box<String> = unsound1(bbs)
-    val s: String = bs.v // ClassCastException: Int cannot be cast to String
-}
-```
+The demonstration of the algorithm is shown in the following diagrams:
 
-The issue is that the $\*$ in the context of $V = Box<\*>$ is not a new unknown type, 
-but an unknown type used bound in the moment of `is BoxBox<*>` check.
-This issue does not limited to the star projections, and arises in case of both variance types:
+![](images/example_several_least_common_classifiers_1.png)
 
-```Kotlin
-open class Box<T>(val v: T)
-class BoxBox<T>(v: Box<T>) : Box<Box<T>>(v)
+![](images/example_several_least_common_classifiers_2.png)
 
-interface A
-interface B
-interface C : A, B
-interface D : C
-interface E : C
+Let's review the algorithm step by step.
 
-fun <V> unsoundIn(box1: Box<V>, box2: BoxBox<in C>): V {
-    if (box1 === box2) {
-        return Box(object : B {})
-    }
-    return box1.v
-}
+1. Not applicable.
+2. Project runtime type on `TExpr` and `ExprInt` 
+   and generate a fresh variables `R1` and `R2` for the type parameters of `TExpr`.
+3. Record the constraints $TExpr<E, T> :> TExpr<R1, R2>$ and $ExprInt :> ExprInt$.
+4. Project runtime type on `Expr` upcasted from the corresponding projections 
+   and receive types $Expr<R1>$ and $Expr<Int>$.
+5. Record the constraint $Expr<R1> = Expr<Int>$.
+4. Project runtime type on `Tag` upcasted from the corresponding projections 
+   and receive types $Tag<R2>$ and $Tag<String>$.
+5. Record the constraint $Tag<R2> = Tag<String>$.
 
-fun <V> unsoundOut(box1: Box<V>, box2: BoxBox<out C>): V {
-    if (box1 === box2) {
-        return Box(object : E {})
-    }
-    return box1.v
-}
-
-fun classCastException() {
-    val bba: BoxBox<A> = BoxBox(Box(object : A {}))
-    val ba: Box<A> = unsoundIn(bba, bba)
-    val a: A = ba.v
-
-    val bbd: BoxBox<D> = BoxBox(Box(object : D {}))
-    val bd: Box<D> = unsoundOut(bbd, bbd)
-    val d: D = bd.v
-}
-```
-
-##### Solution
-
-The origin of these issues is that projections have to be captured before we infer anything.
-
-* Captured types have the identity, so it will be possible to infer a transitive constraints. 
-  And we will fix the first issue.
-
-* For the second issue, the resulting constraint will look like `V = Box<Captured(*)>`
-  which is not a supertype of any other `Box<...>`, so the second issue is fixed as well.
-
-The other solution (used in Scala 3) requires implementation of skolem (existential) types
+### Special cases
 
 #### Flexible types
 
-For flexible types, we have to run the algorithm on their upper bound as it is the type that is guaranteed to be a supertype of the real type.
+For flexible types, we have to run the algorithm on their upper bound 
+as it is the type that is guaranteed to be a supertype of the real type.
 
 ## Constraints resolution
 
-This part is quite straightforward:
+This algorithm is quite similar to the resolution of the constraints' system during function call generics' inference.
+Roughly speaking, this resolution works this way: 
+reduce (simplify) complex constraints until all of them are simple enough.
+(f.e. generic parameter is on one of the sides of the constraint).
+Roughly speaking, the signature of the reduce function is:
 
-1. If any of the types in the constraint is a type parameter, then record a constraint.
-2. If any of the types is the temporary type variable, then record a bound for this variable. 
-   And generate new transitive constraints from this variable. 
-   (For new upper bound, generate constraints with all lower bounds and vice versa)
-3. If both of the types are simple types, 
-   then generate new constraints based on their type parameters.
-   More precisely, we have to look at each type parameter position in each common supertype 
-   and record a constraint according to position's variance.
-   We also should track effectively invariant parameters in the same way as before.
+```Kotlin
+fun reduce(constraint: Constraint): Set<Constraint>
+```
 
-This algorithm is quite similar to the solution of the system during function call generics' inference,
-thus may reuse the same code.
-The main difference between them is that in case we are not able to solve any constraint precisely, 
-we are over-approximating it with simpler constraints in the case of generics' inference,
-but we have to under-approximate it in case of GADT inference.
-[Discussion for Scala 3](https://github.com/lampepfl/dotty/pull/5736)
+Let's denote the resulting set of constraints as $RCs$ and the input constraints as $C$.
 
-### Special cases
+The desired behavior of the reduce function is: $RCs ⟺ C$. 
+Which means that the set of constraints $RCs$ is equivalent to the set of constraints $C$.
+Consequently, if there is a solution for the original set of constraints, 
+then there is a solution for the reduced set of constraints and vice versa.
+
+Sometimes it is impossible to express the original constraint 
+using the simpler ones due to constraint language limitations.
+In these cases, the behavior of the reduce function is: $RCs ⟸ C$.
+Which means that the set of constraints $RCs$ is stricter than the original constraint $C$.
+Consequently, if there is a solution for the original set of constraints, 
+then there is a solution for the reduced set of constraints, but not vice versa.
+Such behavior allows to type-check only the correct function calls, while not all of them.
+
+The difference between the resolution of the constraints' 
+system during function call generics' inference and GADT inference 
+is that in case we are not able to solve constraints precisely, we have to approximate them in the other direction.
+It means, that the behavior of the reduce function have to be: $RCs ⟹ C$.
+Which means that the set of constraints $RCs$ is less strict than the original constraint $C$.
+Consequently, if there is some constraint on type parameter in the resulting set of constraints, 
+then there is the same constraint in the original set of constraints, but not vice versa.
+
+So to implement the resolution of the constraints, 
+we have to adopt the existing resolution algorithm for the another approximation regime. 
+
+### Examples
+
+#### Another approximation
+
+For example, if we are trying to reduce the constraint $S <: T$, where T is a type variable.
+
+For the function call generics' inference, the result of the reduction may be $S <: LB(T)$, 
+where $LB(T)$ is the lower bound of T.
+This constraint will guarantee that the original constraint is satisfied.
+
+For the GADT inference, the result of the reduction may be $S <: UB(T)$, 
+where $UB(S)$ is the upper bound of S.
+This constraint is guaranteed to be satisfied by the original constraint.
 
 #### Intersection types
 
@@ -710,6 +545,60 @@ More precisely:
 * $A :> \{B, C\} => A :> C$
 * $\{B, C\} :> A => B :> A$
 * $A = \{B, C\} => A :> C, B :> A$
+
+## Special cases
+
+### Projections
+
+Projections will be successfully handled by the resolution algorithm.
+To achieve this, they will be captured.
+As a result, we will have a bounds for the type parameters that may contain captured types.
+The issue there is that currently Kotlin uncapture projections exactly after the resolution of the system, 
+so programmers do not interact with captured types directly.
+
+For GADT bound, we are not able to uncapture all of them as it will lead to the unsound constraints.
+Let's review the examples using the following definitions:
+
+```Kotlin
+class Inv<T>
+class Cov<out T>
+class Con<in T>
+```
+
+For example: 
+
+1. If the algorithm produces us a constraint $T :> Con<(Captured(*))>$, 
+   then this only provides us information that T is not nullable and $Con<T> :> Con<Con<Any?>>$.
+   While if we uncapture it, 
+   we will receive $T :> Con<*>$, which leads to, for example, $T :> Con<*> :> Con<Int>$, which is unsound.
+
+2. If the algorithm produces us a constraint $T :> Con<Inv<Captured(*)>>$, 
+   we will be able to approximate this constraint to $T :> Con<Inv<*>>$
+
+3. On the contrary, for the upper bounds,
+   we are able to uncapture the constraint $T <: Con<(Captured(*))>$ but not $T <: Con<Inv<Captured(*)>>$.
+
+The idea is that by uncapturing the type with the captured type as a parameter, we are generalizing this type.
+So we may do it only if it relaxes the constraint.
+
+The information that we are loosing by this relaxation 
+is the equalities between the captured types (or existential variables).
+For example, if we have a constraints $V = Inv<(Captured(*))>$ and $U = Inv<(Captured(*))>$,
+where the captured types are the same, 
+we will be able to call a function `fun <T> foo(i1: Inv<T>, i2: Inv<T>)` with the values of types `V` and `U`.
+And these equalities are required 
+to write a code with the structures that are controlling some invariants on the type level, 
+for example, AVL tree with type-level control of the balance factor.
+
+The possible solutions are
+1. Erase all bounds containing captured types that could be soundly uncaptured.
+   This option will significantly limit the applicability of the GADT inference.
+2. Remain the captured types in the bounds.
+   This option will complicate the printing of types to the user 
+   as currently captured types are not supposed to be printed.
+   But this option will significantly increase the applicability of the GADT inference 
+   and allow to strengthen the captured types in other parts of the type system as well 
+   and make them closer by expressiveness to the existential types.
 
 # Changes to type checking
 
@@ -975,10 +864,6 @@ only to the new compilation errors.
 But it is not a big deal as
 * One of the functions has to be a local function on the generic parameter, which is not a common case.
 * It may be automatically fixed with the migration tool.
-
-# Questions for implementation
-
-1. TODO: [Scala bugs](https://github.com/lampepfl/dotty/issues?q=label%3Aitype%3Abug+label%3Aarea%3Agadt)
 
 # References
 
