@@ -705,6 +705,43 @@ we could not cast `Int` or `String` in the respecting branches to the type `T`.
 And at the moment we are trying to intersect them, 
 we had already lost the information about the local bounds of T.
 
+## Overload resolution
+
+The main place where the absence of an expected type arises is in arguments of a function call.
+Due to type-based resolution, the arguments of a call do not actually have an expected type.
+
+Let's consider the following example:
+
+```kotlin
+sealed interface Box<T>
+class BoxInt : Box<Int>
+
+fun foo(a: Any?) = println("Any?")
+fun foo(s: String) = println("String")
+fun foo(i: Int) = println("Int")
+
+fun <T> bar(t: T, b: Box<T>) = foo(when (b) {
+    is BoxInt -> t
+})
+```
+
+One may expect that the type of the argument of `foo`'s call in will be resolved into 
+`Int` and the corresponding `foo`'s overload will be called, resulting in printing "Int".
+Unfortunately, this is not the case.
+Since the actual expected type is unknown, 
+the inferred type for the expression in the argument is `T`, 
+and call resolves the overload with `Any?`.
+Even more, if we completely remove this overload, 
+we will get a compilation error as none of the overloads is applicable.
+If we then remove the overload with `String`, 
+then `foo` will be successfully resolved to the only remaining declaration of `foo`.
+This happens because in case we only have one overload, we can use it to get the expected type, 
+and with the help of this type we are able to infer the type `Int` for this argument.
+
+The real problem here is that we do not actually choose the most specific overload for a given expression, 
+but rather for arguments' type, which may be inferred in different ways.
+This behaviour may be confusing for the programmers, so it should be explicitly documented.
+
 # Related features
 
 ## Bare types
