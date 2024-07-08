@@ -940,7 +940,4 @@ But it is not a big deal as
     ```
 
     We will result a constraints $S_{real} <: Any$ which is not enough
-    to infer $S_{real}$ due to absence of variance in $D$. (We could
-    generate existential variable in that place and add a constraint for
-    it, but I guess that it would not worth it, except if Kotlin already
-    supports an existential variables in the compiler)
+    to infer $S_{real}$ due to absence of variance in $D$.
