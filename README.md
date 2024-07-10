@@ -304,136 +304,127 @@ we are able to infer relation $A <: B$ in Kotlin.
 
 However, this is not a case for Scala, as there we may have a value of `FalseIdentity` type, for which $A$ would be `Any` and $B$ would be `Int`, and these do not satisfy $A <: B$.
 
-## Constraints resolution
+### Constraint resolution
 
-This algorithm is quite similar to the resolution of the constraints' system during function call generics' inference.
-Roughly speaking, this resolution works this way: 
-reduce (simplify) complex constraints until all of them are simple enough.
-(f.e. generic parameter is on one of the sides of the constraint).
-Roughly speaking, the signature of the reduce function is:
+The second part of the subtype reconstruction, constraint resolution, is very similar to the resolution of the type constraint system during regular type inference.
+Roughly speaking, this resolution works this way: reduce (simplify) input constraints until all of them are simple enough, i.e., transform a set of input constraints into a set of output (reduced) constraints.
 
 ```Kotlin
-fun reduce(constraint: Constraint): Set<Constraint>
+fun resolveConstraints(constraints: Set<Constraint>): Set<Constraint>
 ```
 
-Let's denote the resulting set of constraints as $RCs$ and the input constraints as $C$.
+Let's denote the reduced set of constraints as $R$ and the input set of constraints as $C$.
 
-The desired behavior of the reduce function is: $RCs ⟺ C$. 
-Which means that the set of constraints $RCs$ is equivalent to the set of constraints $C$.
-Consequently, if there is a solution for the original set of constraints, 
-then there is a solution for the reduced set of constraints and vice versa.
+The ideal behavior of the reduce function is: $R <==> C$, meaning that the input and reduced set of constraints are exactly equivalent.
+Consequently, if there is a solution for the original set of constraints, then there is a solution for the reduced set of constraints and vice versa.
 
-Sometimes it is impossible to express the original constraint 
-using the simpler ones due to constraint language limitations.
-In these cases, the behavior of the reduce function is: $RCs ⟸ C$.
-Which means that the set of constraints $RCs$ is stricter than the original constraint $C$.
-Consequently, if there is a solution for the original set of constraints, 
-then there is a solution for the reduced set of constraints, but not vice versa.
-Such behavior allows to type-check only the correct function calls, while not all of them.
+Usually it is impossible to always express the original constraints using simpler ones due to the constraint handling limitations (undecidability, approximations, etc.).
+In these cases, the behavior of the reduce function is: $R ==> C$, meaning that the reduced set of constraints is stricter than the original one.
+Consequently, if there is a solution for the reduced set of constraints, then there is a solution for the original set of constraints, but not vice versa.
 
-The difference between the resolution of the constraints' 
-system during function call generics' inference and GADT inference 
-is that in case we are not able to solve constraints precisely, we have to approximate them in the other direction.
-It means, that the behavior of the reduce function have to be: $RCs ⟹ C$.
-Which means that the set of constraints $RCs$ is less strict than the original constraint $C$.
-Consequently, if there is some constraint on type parameter in the resulting set of constraints, 
-then there is the same constraint in the original set of constraints, but not vice versa.
+> Such behavior means that, if some code is type-safe for reduced set of constraints, it is also type-safe for original set of constraints.
+> Because of this, we will reject some type-safe code as unsafe, but we will never accept type-unsafe code as safe.
 
-So to implement the resolution of the constraints, 
-we have to adopt the existing resolution algorithm for the another approximation regime. 
+For subtype reconstruction, which provides additional information, we should relax the behavior in the other direction and allow the reduced set of constraints to be weaker, meaning the behavior of the reduce function can be: $R <== C$.
+Consequently, if there is a solution for the original set of constraints, then there is a solution for the reduced set of constraints, but not vice versa.
 
-### Examples
+> Such behavior means that subtype reconstruction could add less information than available in the original set of constraints, but it can never add information which was not there.
+> This preserves the type safety property: for a given set of inference constraints `T`, which we want to enhance with subtype reconstruction information, if $C ==> R$, we have $T & R ==> T & C$.
 
-#### Another approximation
+To implement this, we have to adopt the existing resolution algorithm to this new relaxed strategy.
 
-For example, if we are trying to reduce the constraint $S <: T$, where T is a type variable.
+> TODO: And how do we do that? How did we do that in the prototype?
 
-For the function call generics' inference, the result of the reduction may be $S <: LB(T)$, 
-where $LB(T)$ is the lower bound of T.
-This constraint will guarantee that the original constraint is satisfied.
+#### Examples
 
-For the GADT inference, the result of the reduction may be $S <: UB(T)$, 
-where $UB(S)$ is the upper bound of S.
+##### Resolution of type variable constraint
+
+For example, say we are trying to reduce the constraint $S <: T$, where `T` is a type variable.
+
+For the regular inference, the result of the reduction algorithm may be $S <: LB(T)$, where $LB(T)$ is the lower bound of `T`.
+This constraint guarantees that the original constraint is always satisfied.
+
+For the subtype reconstruction inference, the result of the reduction may be $S <: UB(T)$, where $UB(T)$ is the upper bound of `T`.
 This constraint is guaranteed to be satisfied by the original constraint.
 
-#### Intersection types
+##### Resolution with intersection types
 
-If we would like to satisfy a constraint `A :> B & C` we result in a
-disjoint constraints `A :> B | A :> C` which is not easy to solve. 
-As stated at [this moment of presentation](https://youtu.be/VV9lPg3fNl8?t=1391), 
-if Scala 3 met the situation that leads to disjoint constraints, 
-they just do not add such constraints. 
-On the next slide, 
-stated that in case if all-except-one of the disjoint constraints are unsatisfied, 
-then such a constraint could be processed.
+If we would like to satisfy a constraint `A :> B & C`, this results in a disjoint constraints `A :> B | A :> C` which is (exponentially) hard to solve.
+As stated [here](https://youtu.be/VV9lPg3fNl8?t=1391), if Scala GADT algorithm encounters such situation, these disjoint constraints are skipped. 
+In case if all-except-one of the disjoint constraints are immediately unsatisfied, then such a constraint could be processed.
 
-#### Flexible types
+> TODO: Again, what do we do here? What do we do in the prototype?
 
-For flexible types, we have to follow their subtyping rules. 
-[Explanation](https://github.com/JetBrains/kotlin/blob/master/spec-docs/flexible-java-types.md).
+##### Resolution with flexible types
+
+For flexible types, we have to follow [their subtyping rules](https://github.com/JetBrains/kotlin/blob/master/spec-docs/flexible-java-types.md) when doing constraint reduction.
 More precisely:
 
-* $A :> \{B, C\} => A :> C$
-* $\{B, C\} :> A => B :> A$
-* $A = \{B, C\} => A :> C, B :> A$
+* $A :> B..C => A :> C$
+* $B..C :> A => B :> A$
+* $A = B..C => B :> A, A :> C$
 
-## Special cases
+#### Special cases
 
-### Projections
+##### Projections
 
-Projections will be successfully handled by the resolution algorithm.
-To achieve this, they will be captured.
-As a result, we will have a bounds for the type parameters that may contain captured types.
-The issue there is that currently Kotlin uncapture projections exactly after the resolution of the system, 
-so programmers do not interact with captured types directly.
+Projections are handled by the resolution algorithm via capturing.
+As a result of this, we will have some constraints which may contain captured types.
 
-For GADT bound, we are not able to uncapture all of them as it will lead to the unsound constraints.
-Let's review the examples using the following definitions:
+The problem here is that currently Kotlin approximates captured types to regular types immediately after the type system solution, and programmers do not interact with captured types directly, which is good for regular type inference.
+
+For subtype reconstruction, however, we cannot approximate captured types after the resolution of constraints, as it may lead to unsound results.
+Let's review some examples of this using the following definitions.
 
 ```Kotlin
 class Inv<T>
-class Cov<out T>
-class Con<in T>
+class Out<out T>
+class In<in T>
 ```
 
-For example: 
+> TODO: Please check that the examples are correct w.r.t. Inv/Out/In
 
-1. If the algorithm produces us a constraint $T :> Con<(Captured(*))>$, 
-   then this only provides us information that T is not nullable and $Con<T> :> Con<Con<Any?>>$.
-   While if we uncapture it, 
-   we will receive $T :> Con<*>$, which leads to, for example, $T :> Con<*> :> Con<Int>$, which is unsound.
+1. If the algorithm produces constraint $T :> Out<(Captured(*))>$, then this only provides us information that `T` is not nullable and $Out<T> :> Out<Out<Any?>>$.
+   While if we approximated it, we would get $T :> Out<*>$, which leads to $T :> Out<*> :> Out<Int>$, and this is unsound with respect to the original constraint.
 
-2. If the algorithm produces us a constraint $T :> Con<Inv<Captured(*)>>$, 
-   we will be able to approximate this constraint to $T :> Con<Inv<*>>$
+2. If the algorithm produces constraint $T :> In<Inv<Captured(*)>>$, 
+   we will be able to approximate this constraint to $T :> In<Inv<*>>$.
 
-3. On the contrary, for the upper bounds,
-   we are able to uncapture the constraint $T <: Con<(Captured(*))>$ but not $T <: Con<Inv<Captured(*)>>$.
+3. On the contrary, for captured types in the constraint upper bounds,
+   we are able to approximate the constraint $T <: In<(Captured(*))>$, but not $T <: In<Inv<Captured(*)>>$.
 
-The idea is that by uncapturing the type with the captured type as a parameter, we are generalizing this type.
-So we may do it only if it relaxes the constraint.
+> TODO: Add a more detailed explanation above for the stupid readers, why exactly things do not work for upper bounds.
 
-The information that we are loosing by this relaxation 
-is the equalities between the captured types (or existential variables).
-For example, if we have a constraints $V = Inv<(Captured(*))>$ and $U = Inv<(Captured(*))>$,
-where the captured types are the same, 
-we will be able to call a function `fun <T> foo(i1: Inv<T>, i2: Inv<T>)` with the values of types `V` and `U`.
-And these equalities are required 
-to write a code with the structures that are controlling some invariants on the type level, 
-for example, AVL tree with type-level control of the balance factor.
+The core principle is that by approximating a type with captured types during subtype reconstruction, we should be generalizing this type.
+Meaning we can do it only if it relaxes the constraint.
 
-The possible solutions are
-1. Erase all bounds containing captured types that could be soundly uncaptured.
-   This option will significantly limit the applicability of the GADT inference.
-2. Remain the captured types in the bounds.
-   This option will complicate the printing of types to the user 
-   as currently captured types are not supposed to be printed.
-   But this option will significantly increase the applicability of the GADT inference 
-   and allow to strengthen the captured types in other parts of the type system as well 
-   and make them closer by expressiveness to the existential types.
+We are loosing some type information with this relaxation, specifically we lose the equalities between the captured types (and their corresponding existential variables).
+For example, if we have a constraints $V = Inv<(Captured(*))>$ and $U = Inv<(Captured(*))>$, where the captured types are equal, we should be able to call a function `fun <T> foo(i1: Inv<T>, i2: Inv<T>)` with the values of types `V` and `U`.
+But after approximation this information will be lost.
 
-# Changes to type checking
+> For example, such code with captured type equalities happens when you are working with data structures that are controlling some invariants on the type level, for example, AVL tree with type-level control of the balance factor.
 
-## New type of statements
+The possible solutions to this loss of precision are
+
+1. Erase all bounds containing captured types that could not be soundly approximated.
+   This option will significantly limit the applicability of the subtype reconstruction.
+
+> TODO: Why do we think that? Do we have any backing for saying "this will break GADT inference"?
+
+2. Preserve the captured types in the constraints.
+   This option will complicate the compiler diagnostics as currently captured types are not really supposed to be printed.
+   On the other hand, this option will increase the applicability of the subtype reconstruction and allow to improve the handling of captured types in other parts of the type system as well, making them closer in expressiveness to the existential types.
+
+> TODO: Why do we think that? I have a feeling we need to do some additional work to improve captured types, simply keeping them in the constraints is not enough?
+
+## Subtype reconstruction in Kotlin flow-sensitive type system
+
+Now that we have an algorithm which allows us to infer additional information about types, we need to integrate this algorithm to our flow-sensitive type system.
+Here we explain the steps needed to achieve that.
+
+### New type of control-flow graph statements
+
+RESUME FROM HERE
 
 We introduce a new type of statements collected by the data-flow analysis, called *type intersection*.
 Type intersection is a set of types 
