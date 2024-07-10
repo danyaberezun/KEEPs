@@ -1,85 +1,89 @@
-# Prototype implementation reference
+# Subtype reconstruction in pattern matching aka GADT-style inference
 
-https://github.com/e2e4b6b7/kotlin/pull/2
+## Introduction
+### (Generalized) algebraic data types 
 
-# The Problem and Motivation
+Kotlin currently allows one to declare algebraic data types, or *ADT*, via sealed classes/interfaces and data classes.
+ADTs allows one to form a type by combining other types, where the sum type is represented as a sealed class/interface, and the product type is represented as a data class.
+The beauty comes when ADTs are also equipped with pattern matching (`when` expressions) on their structure and types.
 
-`Kotlin` currently supports algebraic data types, or *ADT*, via sealed classes and interfaces.
-ADTs allows one to form a type by combining other types.
-The beauty comes when ADTs are equipped with pattern-matching (`when` expressions) -
-matching a value against a pattern.
+In functional programming (for example, with languages like Scala, OCaml, Haskell) there is a more powerful concept of generalized algebraic data types, or *GADT* (aka guarded recursive datatype).
+It is a generalization of parametric ADTs which permits value constructors to return specific, rather than parametric, type-instantiations of their own datatype.
 
-In functional programming (languages like `Scala`, `OCaml`, `Haskell`, and so on) the concept of generalized algebraic data types, or *GADT* (aka. guarded recursive datatype), is widely used.
-It is a generalization of parametric algebraic data types by permitting value constructors to return specific, rather than parametric, type-instantiations of their own datatype.
-GADTs enables the encapsulation of additional type information (invariants) in ADTs, along with the ability of utilizing the encapsulated type information when performing pattern matching.
+> TODO: add a simple example of ADT vs GADT which shows what is the difference between specific and parametric type instantiations.
 
-One of the classical well-known GADT use-cases is ensuring type safety when defining DSLs.
-For example (in `Scala`), an arithmetic expression can be type-safe by construction disallowing one to even construct an expression that uses binary operator on non-numerical values and tuples:
+GADTs enable the storage of additional type information (invariants) in ADTs, along with the ability of using this information when doing pattern matching.
+
+One of the classic well-known GADT use-cases is ensuring type safety when defining DSLs.
+For example, in Scala an arithmetic expression can be made type-safe by construction, e.g. it is impossible to construct an expression that uses binary operator on non-numerical values and tuples.
+
 ```Scala 
 enum Expr[A]:
   case LitInt(i: Int) extends Expr[Int]
   case Add(e1: Expr[Int], e2: Expr[Int]) extends Expr[Int]
   case Tuple[X, Y](x: Expr[X], y: Expr[Y]) extends Expr[(X, Y)]
 ```
-In the example constructor `LitInt` asserts that the data being created is an `Expr[Int]`, 
-not just some generalized `Expt[T]`, while binary addition constructor `Add` asserts that its sub-expressions are numbers (are of type `Expr[Int]`).
-Thus, in this case our `invariants` are: any integer literal is actually an integer, while any binary addition has both sub-expressions of an integer type.
-The main advantage is that this information is encapsulated in the type itself.
-Note, there is no way to construct an ill-formed expression (for example, addition to tuples).
 
-As ADTs comes with pattern-matching, GADTs comes with generalized pattern-matching that utilizes the information encoded/encapsulated in GADTs ensuring source code type safety.
-In other words, GADTs themselves represent *types correct by construction* while generalized pattern matching *guarantee absence of type errors during evaluation*.
+In the example constructor `LitInt` ensures that the data being created is an `Expr[Int]`, not just some generalized `Expt[T]`, while binary addition constructor `Add` checks that its sub-expressions are numbers, i.e., are of type `Expr[Int]`.
+Thus, in this case our *data type invariants* are: any integer literal is actually an integer, and any binary addition has integer sub-expressions.
+This information is stored in the type itself, meaning there is no way to construct an ill-formed expression (for example, a binary addition of two tuples).
 
-For example (in `Scala`), the following function that evaluates arithmetic expressions is well-typed.
-In the `LitInt` case: GADT constraint `Int = T` allows the branch to return `Int` instead of `T`.
-Moreover, in the `Add` case: we can safely use binary addition.
-That is, we locally use the information encapsulated in GADTs in each branch of pattern-matching,
-ensuring the branch is well-typed with respect to this information and "forgetting"
-the information going beyond the branch.
+As ADTs comes with pattern matching, generalized ADTs come with generalized pattern matching which uses the type information stored in GADTs to guarantee code type safety.
+In other words, as GADTs represent *types correct by construction at compile-time*, generalized pattern matching *guarantees absence of type errors during run-time*.
+
+Continuing on the previous example, the following function that evaluates arithmetic expressions is well-typed.
+
 ```Scala
 def eval[T](e: Expr[T]): T = e match
-  case LitInt(i) => i
+  case LitInt(i) => i // GADT constraint `T = Int` allows the branch
+                      // to return an `Int` and not a generic `T`
   case Add(e1, e2) => eval(e1) + eval(e2)
+                      // GADT constraint allows to infer that `eval(Expr[Int])`
+                      // returns an `Int` and not a generic `T`,
+                      // which allows to use binary addition
   case Tuple(x, y) => (eval(x), eval(y))
 ```
 
-GADTs have a number of applications, including DSls definition, strongly-typed evaluators,
-generic pretty-printing, generic traversals and queries, databases, and typed parsing.
+That is, we locally use the information stored in GADTs in specific branches of pattern matching, ensuring the branch is well-typed with respect to this information, and correctly "forget" the information outside of these branches.
+Without the ability to do generalized pattern matching, GADTs lose most of their safety and expressive power.
 
-Unfortunately, *`Kotlin` has no support for generalized pattern matching while allowing one to actually define a `GADT`*.
-This leads to some kind of inconsistency in the language design and unlikely compiler behavior.
-For example, the following code does not type check, i.e., type-checker is not able to locally cast `e.i`,
-even though a type checker has the all necessary information.
+As follows from these points, GADTs are most useful in applications where compile- and run-time type safety is especially important, for example, complex DSLs, strongly-typed evaluators, generic data structure pretty-printing, traversals and queries, or database access.
+
+### GADTs in Kotlin
+
+Unfortunately, Kotlin allows one to define a GADT, but it has *no support for generalized pattern matching*.
+This means that Kotlin users either have to avoid using GADTs (i.e., it's as if Kotlin does not support GADTs) or preserve and validate the data type invariants *by hand* (i.e., the users have to write boilerplate code with the possibility of making an error).
+
+For example, if we translate the Scala example from above to Kotlin, it does not type check, because the Kotlin type checker is not able to infer that `e.i` is of type `Int`, even though in principle all necessary type information is there.
 
 ```Kotlin
 sealed class Expr<out T>
 data class ExprIntLit(val i: Int) : Expr<Int>
 
 fun <T> eval(e: Expr<T>): T = when (e) {
-    is ExprIntLit -> e.i // Type mismatch. Required: T Found: Int
+    is ExprIntLit -> e.i // Type mismatch. Required: T, Found: Int
 }
 ```
 
-or
-
 ```Kotlin
-interface Expr2<out T>
-class Expr2IntLit(val i : Int) : Expr2<Int>
+interface Expr<out T>
+class ExprIntLit(val i : Int) : Expr<Int>
 
-fun <T> eval(e: Expr2<T>): T = when (e) {
-    is Expr2IntLit -> e.i // Type mismatch. Required: T Found: Int
+fun <T> eval(e: Expr<T>): T = when (e) {
+    is ExprIntLit -> e.i // Type mismatch. Required: T, Found: Int
     else -> TODO()
 }
 ```
 
-***The paper presents a proposal how the current type-checker can be modified in order to cover this __gap__ in the language design by adding support for GADT inference.***
+> TODO: do we need the second example? What new information w.r.t. GADTs does it show?
 
-***Moreover, adding the mechanism to support for generalized pattern matching in type-checker also improves smart-casts behaviour and allows one to get rid of a number of unsafe casts in source code.*** (See next section for details)
+This KEEP proposes how the current Kotlin type system can be modified in order to cover this problem in the language design by adding support for generalized pattern matching.
 
+Besides improvements to the GADT user experience, adding the support for generalized pattern matching also improves smart-casts behaviour and allows one to get rid of a number of unsafe casts in the code even without the use of GADTs.
 
 ## The Problem Scope (or Accompanying Benefits)
 
-In general, GADT inference is associated with pattern-matching when we match a value of the sum type on one of their constructors and are able to specialize the type parameters of the sum type based on their instances in the specific constructor.
+In general, GADT inference is associated with pattern matching when we match a value of the sum type on one of their constructors and are able to specialize the type parameters of the sum type based on their instances in the specific constructor.
 It is how the GADT inference works in the functional languages with their system of subtyping.
 While it is not the case for languages with OOP-style subtyping as it is shown in 
 [first formalization for C#](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/gadtoop.pdf) 
@@ -941,3 +945,7 @@ But it is not a big deal as
 
     We will result a constraints $S_{real} <: Any$ which is not enough
     to infer $S_{real}$ due to absence of variance in $D$.
+
+## Addendum
+
+* [Prototype implementation](https://github.com/e2e4b6b7/kotlin/pull/2)
