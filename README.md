@@ -87,7 +87,7 @@ As we have established, GADTs are associated with generalized pattern matching: 
 It is how the GADTs already works in many functional languages, but for object-oriented languages with inheritance-based subtyping it is not as easy and actually not enough to achive only generalized pattern matching.
 
 > The details of why it is so could be found in [the GADT formalization for C#](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/gadtoop.pdf) and Scala 3 implementation.
-> Additionally, you could see the [Bound inference algorithm](...) section of this KEEP.
+> Additionally, you could see the [Bounds inference algorithm](...) section of this KEEP.
 
 In fact, in general you have access to additional type information when there is a value in the program that has two related types.
 For functional languages, this happens, for example, with GADT and one of its specific variant type in pattern matching; for object-oriented languages, this can happen for two arbitrary types, when one is inherited from (is a subtype of) another.
@@ -136,102 +136,69 @@ fun <T> evalEquality(e1: Expr<T>, e2: ExprIntLit): T {
 The current type system implementation collects such statements only for separate variables, which makes these examples ill-typed.
 Let us explain how we can extend the Kotlin type system to support subtype reconstruction.
 
-# Bounds inference algorithm
+## Subtype reconstruction
 
-This algorithm is aimed to infer bounds for type parameters based on the operational information about the types.
+### Bounds inference algorithm
 
-Input of the algorithm is a set of type intersections
-that is known to have a value in the specific node of the control-flow graph.
-Output of the algorithm is a set of bounds for type parameters used in types in the intersections
-(or more generally, reachable in this node of the control-flow graph).
+The subtype reconstruction is based on bounds inference algorithm.
+The purpose of this algorithm is to infer bounds for type arguments based on the extended subtype information available from Kotlin flow-sensitive type system.
 
-This algorithm could be merged with the smart casting
-as it also infers the bound for the real type as well as for type parameters.
-The algorithm consists of two parts, generation of subtyping and equality constraints and their resolution.
+As an input, the algorithm accepts a set of types `T1 & T2 & ...` for a specific value which this value definitely has at a specific program point.
+As an output, it infers additional bounds for type arguments used in types `T1 & T2 & ...`.
+The algorithm consists of two parts, generation of subtyping and equality constraints, and their resolution.
 
-## Generation of constraints
+### Generation of constraints
 
-There are types that are known to be supertypes of some value denoted as $S_{i}$. 
-*Type* consists of classifiers and their type parameters.
-We can project a type on classifier and get the type parameters of that classifier for that type.
-
-Let $R$ be a runtime type of the value. 
-As we do not know the real type parameters of the runtime type, 
-while we are projecting a runtime type on any classifier, we are initializing them with the fresh type variables.
-
-Let's introduce an operation "project runtime type on classifier X upcasted from projection on Y".
-In this operation, we are not generating a new type variable for each type parameter.
-We are substituting the variables generated for classifier Y, 
-while going up in the hierarchy of classifiers from Y to X.
-
-The algorithm consists of the following steps:
-
-1. If $S_{i}$ is an intersection type, 
-   add all types in the intersection to the set of types $S_{i}$ 
-   and process them as individual supertypes of the value.
-2. Project runtime type $R$ on lowest classifiers of each $S_{i}$ and denote them as $R_{S_{i}}$.
-3. As the runtime type is a subtype of all $S_{i}$, 
-   its projections are also subtypes of the corresponding $S_{i}$, 
-   so record the constraint $R_{S_{i}} :> S_{i}$ for the second phase.
-4. For each classifier $S_{i,j}$ which is the lowest upper bound of $S_{i}$ and $S_{j}$, 
-   project runtime type $R$ upcasted from $R_{S_{i}}$ and $R+{S_{j}}$ on $S_{i,j}$ 
-   and denote them as $R^{S_{i,j}}_{S_{i}}$ and $R^{S_{i,j}}_{S_{j}}$.
-5. Record the constraint $R^{S_{i,j}}_{S_{i}} = R^{S_{i,j}}_{S_{j}}$,
-   where = means syntactic equality of types.
-
-The last step of the algorithm justified by the following paragraph of the Kotlin's specification:
-
-> the transitive closure S∗(T) of the set of type supertypes S(T : \(S_1\), . . . , \(S_m\)) = {\(S_1\), . . . , \(S_m\)} ∪ S(\(S_1\)) ∪ . . . ∪ S(\(S_m\))
-> is consistent, i.e., does not contain two parameterized types with different type arguments.
-
-As $R^{S_{i,j}}_{S_{i}}$ and $R^{S_{i,j}}_{S_{j}}$ are projections of the same runtime type on the same classifier,
-they are equal to each other.
-
-### Compared to Scala
-
-The algorithm is quite different from Scala's algorithm and may infer bounds in more cases.
-The main difference arises from the mentioned paragraph of the Kotlin's specification 
-which allows to simplify and enhance the algorithm.
-
-For instance, the following code:
-
-```Scala
-trait Func[-A, +B]
-trait Identity[X] extends Func[X, X]
-trait FalseIdentity extends Identity[Int], Func[Any, Int]
-```
-
-is valid in Scala while the same code in Kotlin:
+The pseudocode for the constraint generation is shown below.
 
 ```Kotlin
-interface Func<in A, out B>
-interface Identity<X> : Func<X, X>
-interface FalseIdentity : Identity<Int>, Func<Any, Int>
-```
-
-fails to compile with error:
-`Type parameter B of 'Func' has inconsistent values: Int, Any`.
-
-As a result, for the code like this:
-
-```Kotlin
-fun <A, B> foo(func: Func<A, B>) = when (func) {
-    is Identity<*> -> {
-        val b: B = TODO() as A
-    }
-    else -> TODO()
+fun generateConstraintsFor(supertypes: List<Type>) {
+  val assumptions = List<Assumption>()
+  val projections = supertypes.map {
+    createRealTypeProjection(it.classifier)
+  }
+  supertypes.zip(projections).forEach {
+    supertype, projection ->
+      assumptions.add(projection <: supertype)
+  }
+  projections.cartesianProduct().forEach { proj1, proj2 ->
+    val lowestCommonClassifiers: List<Classifier> = lcc(
+      proj1.classifier, proj2.classifier)
+    lowestCommonClassifiers.forEach { classifier ->
+      val upcastedProj1 = upcast(proj1, classifier)
+      val upcastedProj2 = upcast(proj2, classifier)
+      assumptions.add(upcastedProj1 =:= upcastedProj2)
+  }
 }
 ```
 
-We are able to infer relation $A <: B$ in Kotlin,
-while this is not a case for Scala as we may call this function with `FalseIdentity` as an argument,
-consequently, $A$ would be `Any` and $B$ would be `Int` which does not satisfy $A <: B$.
+> TODO: this needs to be carefully re-read to check I didn't break smth when rewriting the algorithm.
 
-### Examples
+The input for the algorithm is a list of known supertypes for some value, which come from the compile-time information in the code (type declarations, type checks, etc.).
 
-#### Simple example
+Stage 1: If these supertypes contain intersection types, we consider each of the intersection type components as a separate supertype.
 
-Let's review the algorithm on the following example:
+Stage 2: Next, in line 3, we create so called "type projections" of these supertype.
+A type projection of a supertype is this type's classifier type parameterized with fresh type arguments (if any).
+It can be viewed as a placeholder for the actual runtime type of the value.
+
+Stage 3: Then, in line 6, we record the constraint that these type projections are subtypes of their corresponding supertypes, as the actual runtime type of the value will be a subtype of its compile-time checked supertype.
+
+Stage 4: After that, in line 10, we iterate over all lowest common classifiers (line 14) for each possible pair of the type projections.
+The lowest common classifiers are determined with respect to the inheritance relation.
+Then, in line 14, we upcast both projections on all of those classifiers. Upcasting is the process of "lifting" the subtype to its supertype along the inheritance hierarchy together with the substitution of the type parameters.
+
+Stage 5: Finally, we generate strict equalities between these upcasted projections, as they represent supertypes of the same type (real type of the considered value) w.r.t. the same classifier.
+This is justified by the following paragraph of the Kotlin specification.
+
+> The transitive closure S∗(T) of the set of type supertypes S(T : \(S_1\), . . . , \(S_m\)) = {\(S_1\), . . . , \(S_m\)} ∪ S(\(S_1\)) ∪ . . . ∪ S(\(S_m\))
+> is consistent, i.e., does not contain two parameterized types with different type arguments.
+
+#### Examples
+
+##### Simple example
+
+Let's review the algorithm on the following example.
 
 ```Kotlin
 interface Expr<T>
@@ -243,25 +210,24 @@ fun <T> eval(e: Expr<T>): T =
   }
 ```
 
-As an input of the algorithm, we have two supertypes of the value `v`: `ExprInt` and `Expr<T>`.
+As an input for the algorithm, we have two supertypes of the value `e`: `ExprInt` and `Expr<T>`.
 
-The demonstration of the algorithm is shown in the following diagram:
+The flow of the algorithm is shown in the following diagram.
 
 ![](images/example_simple.png)
 
-Numbers in the image denote the corresponding steps of the algorithm.
-The upper part of the diagram shows the expected outcome of the second phase of the algorithm.
-Let's review the algorithm step by step.
+The upper part of the diagram shows the final generated constraints.
+Let's follow the algorithm step by step.
 
-1. Not applicable.
-2. Project runtime type on `Expr` and `ExprInt` and generate a fresh variable `R` for the type parameter of `Expr`.
-3. Record the constraints $Expr<T> :> Expr<R>$ and $ExprInt :> ExprInt$.
-4. Project runtime type on `Expr` upcasted from the corresponding projections and receive types $Expr<R>$ and $Expr<Int>$.
-5. Record the constraint $Expr<R> = Expr<Int>$.
+* Stage 1. Not applicable.
+* Stage 2. Do type projection on `Expr<T>` to get `Expr<R>` (where `R` is a fresh type variable) and on `ExprInt` to get `ExprInt`.
+* Stage 3. Record the constraints $Expr<T> :> Expr<R>$ and $ExprInt :> ExprInt$.
+* Stage 4. For the lowest common classifier `Expr`, upcast the corresponding projections and get types $Expr<R>$ and $Expr<Int>$.
+* Stage 5. Record the constraint $Expr<R> =:= Expr<Int>$.
 
-#### Several least common classifiers
+##### Example with several lowest common classifiers
 
-Let's review the algorithm on the following example:
+Let's review the algorithm on the following, more complicated example.
 
 ```Kotlin
 interface Expr<T>
@@ -274,33 +240,69 @@ fun <E, T> eval(e: TExpr<E, T>): E = when (e) {
 }
 ```
 
-As an input of the algorithm, we have two supertypes of the value `value`: `ExprInt` and `TExpr<E, T>`.
+As an input of the algorithm, we have two supertypes of the value `e`: `ExprInt` and `TExpr<E, T>`.
 
-The demonstration of the algorithm is shown in the following diagrams:
+The flow of the algorithm is shown in the following diagrams:
 
 ![](images/example_several_least_common_classifiers_1.png)
 
 ![](images/example_several_least_common_classifiers_2.png)
 
-Let's review the algorithm step by step.
+Let's follow the algorithm step by step.
 
-1. Not applicable.
-2. Project runtime type on `TExpr` and `ExprInt` 
-   and generate a fresh variables `R1` and `R2` for the type parameters of `TExpr`.
-3. Record the constraints $TExpr<E, T> :> TExpr<R1, R2>$ and $ExprInt :> ExprInt$.
-4. Project runtime type on `Expr` upcasted from the corresponding projections 
-   and receive types $Expr<R1>$ and $Expr<Int>$.
-5. Record the constraint $Expr<R1> = Expr<Int>$.
-4. Project runtime type on `Tag` upcasted from the corresponding projections 
-   and receive types $Tag<R2>$ and $Tag<String>$.
-5. Record the constraint $Tag<R2> = Tag<String>$.
+* Stage 1. Not applicable.
+* Stage 2. Do type projection on `TExpr<E, T>` to get `TExpr<R1, R2>` (where `R1` and `R2` are fresh type variables) and `ExprInt` to get `ExprInt`.
+* Stage 3. Record the constraints $TExpr<E, T> :> TExpr<R1, R2>$ and $ExprInt :> ExprInt$.
+* Stage 4.
+    * For the lowest common classifier `Expr`, upcast the corresponding projections and get types $Expr<R1>$ and $Expr<Int>$.
+    * For the lowest common classifier `Tag`, upcast the corresponding projections and get types $Tag<R2>$ and $Tag<String>$.
+* Stage 5.
+    * Record the constraint $Expr<R1> =:= Expr<Int>$.
+    * Record the constraint $Tag<R2> =:= Tag<String>$.
 
-### Special cases
+#### Special cases
 
-#### Flexible types
+* Flexible types. For flexible types, we have to run the algorithm on their upper bound, as it is the type that is guaranteed to be a supertype of the real type.
 
-For flexible types, we have to run the algorithm on their upper bound 
-as it is the type that is guaranteed to be a supertype of the real type.
+> TODO: Maybe add an example of how the algorithm works for flexible types?
+
+#### How this compares to the Scala GADT algorithm?
+
+The algorithm is quite different from the Scala GADT algorithm and may infer bounds in more cases.
+The main difference arises from the mentioned paragraph of the Kotlin specification, aka supertype set consistency, which allows to simplify and enhance the algorithm.
+
+For instance, the following code:
+
+```Scala
+trait Func[-A, +B]
+trait Identity[X] extends Func[X, X]
+trait FalseIdentity extends Identity[Int], Func[Any, Int]
+```
+
+is valid in Scala, while the same code in Kotlin:
+
+```Kotlin
+interface Func<in A, out B>
+interface Identity<X> : Func<X, X>
+interface FalseIdentity : Identity<Int>, Func<Any, Int>
+```
+
+fails to compile with error: `Type parameter B of 'Func' has inconsistent values: Int, Any`.
+
+As a result, for the code like this:
+
+```Kotlin
+fun <A, B> foo(func: Func<A, B>) = when (func) {
+    is Identity<*> -> {
+        val b: B = mk() as A
+    }
+    else -> TODO()
+}
+```
+
+we are able to infer relation $A <: B$ in Kotlin.
+
+However, this is not a case for Scala, as there we may have a value of `FalseIdentity` type, for which $A$ would be `Any` and $B$ would be `Int`, and these do not satisfy $A <: B$.
 
 ## Constraints resolution
 
