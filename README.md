@@ -1,4 +1,4 @@
-# Subtype reconstruction in pattern matching aka GADT-style inference
+# Subtype reconstruction aka GADT-style inference
 
 ## Introduction
 ### (Generalized) algebraic data types 
@@ -58,7 +58,7 @@ For example, if we translate the Scala example from above to Kotlin, it does not
 
 ```Kotlin
 sealed class Expr<out T>
-data class ExprIntLit(val i: Int) : Expr<Int>
+data class ExprIntLit(val i: Int) : Expr<Int>()
 
 fun <T> eval(e: Expr<T>): T = when (e) {
     is ExprIntLit -> e.i // Type mismatch. Required: T, Found: Int
@@ -67,7 +67,7 @@ fun <T> eval(e: Expr<T>): T = when (e) {
 
 ```Kotlin
 interface Expr<out T>
-class ExprIntLit(val i : Int) : Expr<Int>
+class ExprIntLit(val i : Int) : Expr<Int>()
 
 fun <T> eval(e: Expr<T>): T = when (e) {
     is ExprIntLit -> e.i // Type mismatch. Required: T, Found: Int
@@ -79,237 +79,62 @@ fun <T> eval(e: Expr<T>): T = when (e) {
 
 This KEEP proposes how the current Kotlin type system can be modified in order to cover this problem in the language design by adding support for generalized pattern matching.
 
-Besides improvements to the GADT user experience, adding the support for generalized pattern matching also improves smart-casts behaviour and allows one to get rid of a number of unsafe casts in the code even without the use of GADTs.
+Besides improvements to the GADT user experience, adding the support for generalized pattern matching also improves smart casts behaviour and allows one to get rid of a number of unsafe casts in the code even without the use of GADTs.
 
-## The Problem Scope (or Accompanying Benefits)
+## From generalized pattern matching to subtype reconstruction
 
-In general, GADT inference is associated with pattern matching when we match a value of the sum type on one of their constructors and are able to specialize the type parameters of the sum type based on their instances in the specific constructor.
-It is how the GADT inference works in the functional languages with their system of subtyping.
-While it is not the case for languages with OOP-style subtyping as it is shown in 
-[first formalization for C#](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/gadtoop.pdf) 
-and Scala 3 implementation (see a **Bounds inference algorithm** section below for details).
-In fact, we are able to run GADT inference at the moment we are identifying that there is a value in the program that has two types, i.e., sum type and type of the specific constructor in the case of functional languages, and two arbitrary types in the case of Kotlin.
-Luckily, in Kotlin, in order to support smart casts, there exists a kind of flow typing that extracts operational information about different types of a value in a specific branch.
-Since this information is not limited to the `when`-expressions only, we are able to successfully infer types not only in case of `when`-expressions but also in branches of other control-flow operators like conditional branching and so on.
-For example, all four examples below are well-typed as in all these cases we have an information that there is a value that is subtype of both `ExprIntLit` and `Expr<T>`.
+As we have established, GADTs are associated with generalized pattern matching: when we match a value of GADT on one of its variants, we can infer precise type arguments for this value based on the type arguments in the matched GADT variant.
+It is how the GADTs already works in many functional languages, but for object-oriented languages with inheritance-based subtyping it is not as easy and actually not enough to achive only generalized pattern matching.
+
+> The details of why it is so could be found in [the GADT formalization for C#](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/gadtoop.pdf) and Scala 3 implementation.
+> Additionally, you could see the [Bound inference algorithm](...) section of this KEEP.
+
+In fact, in general you have access to additional type information when there is a value in the program that has two related types.
+For functional languages, this happens, for example, with GADT and one of its specific variant type in pattern matching; for object-oriented languages, this can happen for two arbitrary types, when one is inherited from (is a subtype of) another.
+
+This means for Kotlin we would need to have something more general than generalized pattern matching, something which allows to use the subtyping information anywhere.
+We will call this *"subtype reconstruction"*, as its core idea is to reconstruct additional subtyping information for related types.
+
+Kotlin has a flow-sensitive type system, in order to support smart casts, i.e. it collects information about possible types of values in a flow-sensitive way, meaning it can track that a value has two possible types and it can know if these types are related.
+Since this information is not limited to `when`-expressions, it allows us to have general subtype reconstruction which is not limited to pattern matching only.
+
+For example, the four examples below are actually well-typed as in all these cases we know that `e` is of both `ExprIntLit` and `Expr<T>` types, which means that `T = Int`.
 
 ```Kotlin
 sealed class Expr<out T>
-data class ExprIntLit(val i: Int) : Expr<Int>
+data class ExprIntLit(val i: Int) : Expr<Int>()
 
-fun <T> eval(e: Expr<T>): T = when (e) {
+fun <T> evalWhen(e: Expr<T>): T = when (e) {
     is ExprIntLit -> e.i
 }
-```
 
-```Kotlin
-fun <T> eval(e: Expr<T>): T {
+fun <T> evalIs(e: Expr<T>): T {
     if (e is ExprIntLit) {
         return e.i
     }
     TODO()
 }
-```
 
-```Kotlin
-fun <T> eval(e: Expr<T>): T {
+fun <T> evalNotIs(e: Expr<T>): T {
     if (e !is ExprIntLit) {
         TODO()
     }
     return e.i
 }
-```
 
-```Kotlin
-fun <T> eval(e1: Expr<T>, e2: Expr<Int>): T {
+fun <T> evalEquality(e1: Expr<T>, e2: ExprIntLit): T {
     if (e1 === e2) {
-        return e.i
+        return e1.i
     }
     TODO()
 }
 ```
 
-The current implementation that collects such statements only for variables
-(as temporary values are not eligible for smart casts) 
-is making the last three examples ill-typed.
-But since temporary values are outfiltered at the very last stage,
-we can easily collect these statements for any values.
-As a consequence, even the following case becomes well-typed.
+> TODO: previously we said that only the last three examples do not work, but for me all four examples have RETURN_TYPE_MISMATCH.
+> Could we double check what happens here?
 
-```Kotlin
-fun <T> transform(e: Expr<T>): Expr<T> = TODO()
-
-fun <T> eval(e: Expr<T>): T {
-    if (transform(e) is ExprIntLit) {
-        return e.i
-    }
-    TODO()
-}
-```
-
-## Generic use-cases
-
-[Source and more examples](https://chrilves.github.io/posts/gadts_by_use_cases/)
-
-### Runtime subtyping evidence
-
-One easy, but beneficial, benefit of GADTs is expressing relations
-about types like \" $A <: B$\" or \" $A = B$\":
-
-```Kotlin
-sealed interface EqT<A, B>{
-  class Evidence<X> : EqT<X, X>
-}
-
-sealed interface SubT<A, B>{
-  class Evidence<A, B : A> : SubT<A, B>
-}
-```
-
-It may be used like this:
-
-```Kotlin
-fun <A, B> coerce(subT: SubT<B, A>, a: A): B =
-  when (subT) {
-    is SubT.Evidence<*> -> a // Inferred: B :> A
-  }
-```
-
-While in this example, we were able to express this in the constraints for generic parameter. 
-Nevertheless, it may be useful, for example, in case we
-have a complex collection which can be slightly optimized based on any
-property of the stored type (for example, if they are comparable). 
-
-Currently available solutions:
-
-* Write another implementation for each property value. 
-  Require much additional code, abstract classes and may lead to code duplication.
-* Get comparability property as a boolean, enum parameter, or comparator.
-  In this case, 
-  we have to write explicit error-prone casts in each place where we require comparability.
-
-With gadt inference, we can express it more conveniently:
-
-```Kotlin
-sealed interface Comparability<A> {
-    class Comparable<A : kotlin.Comparable<A>> : Comparability<A>
-    class NotComparable<A> : Comparability<A>
-}
-
-...
-
-class ComplexCollection<V>(val comparability: Comparability<V>) {
-  private val values: List<V>
-
-...
-
-  fun doAlgorithm() {
-    when (comparability) {
-      is Comparability.Comparable<*> -> optimizedAlgorithm(values)
-      is Comparability.NotComparable<*> -> defaultAlgorithm(values)
-    }
-  }
-  
-...
-
-fun <V : Comparable<V>> optimizedAlgorithm(values: List<V>)
-fun <V> defaultAlgorithm(values: List<V>)
-```
-
-### More type-safe extensions
-
-Let's imagine a library with such an architecture:
-
-```Kotlin
-sealed interface Chart<A> {
-    fun draw(chartData: A)
-}
-class PieChart : Chart<PieData>
-class XYChart : Chart<XYData>
-```
-
-If we would like to write an extension that will draw chart in another
-way, then it may look like this:
-
-```Kotlin
-fun <A> Chart<A>.myDraw(chartData: A): Unit =
-  when (this) {
-    is PieChart -> {
-      val pieData = chartData as PieData
-      ... // modify
-      draw(pieData)
-    }
-    else -> draw(chartData)
-  }
-```
-
-The programmer has to explicitly cast data to PieData as he is sure that it is always successful. 
-In this case, it is true and could be inferenced by gadt inference. 
-Then code could become more type-safe and less verbose:
-
-```Kotlin
-fun <A> Chart<A>.myDraw(chartData: A): Unit =
-  when (this) {
-    is PieChart -> {
-      // chartData is PieData in this branch
-      ... // modify
-      draw(chartData)
-    }
-    else -> draw(chartData)
-  }
-```
-
-## Real-world examples
-
-1.  [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/core/reflection.jvm/src/kotlin/reflect/jvm/internal/calls/ValueClassAwareCaller.kt#L45)
-2.  [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/compiler/resolution/src/org/jetbrains/kotlin/resolve/calls/KotlinCallResolver.kt#L165)
-3.  [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/compiler/fir/providers/src/org/jetbrains/kotlin/fir/types/TypeUtils.kt#L211-L21)
-4.  [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/jps/jps-plugin/src/org/jetbrains/kotlin/jps/model/ProjectSettings.kt#L72-L75)
-
-## Real-world use-cases
-
-There are several papers that discuss the use-cases of GADTs[links].
-The main mentioned advantages are:
-
-* Well-typed LR Parser. 
-  GADT allows eliminating some runtime checks which improve performance over non-GADTs implementations.
-* Type-safe AVL Tree.
-  GADT with existential types allows implementing AVL Tree with type-level control of a balance factor.
-* Typed Printf/Scanf Formats.
-  There is a proposal to use GADTs instead of strings to represent printf/scanf formats in OCaml, 
-  which not only improves performance but also fixes potential bugs and stabilizes the code.
-* Event Processing Optimizations.
-  GADTs enabled a number of optimizations in the area of event processing, 
-  which led to performance gains in applications focused on this aspect.
-* Optimization of Combinator Libraries.
-  
-To find existing libraries that use GADTs, 
-especially in Scala, whose type system is the most similar to the Kotlin's of languages with GADTs,
-requires significant work to analyze the codebase of multiple libraries.
-The only one that lies on the surface is fs2, 
-which has a [standalone document](https://github.com/typelevel/fs2/blob/fbd0f25238f0321474816375f1992ecc10e1cc3e/docs/implementation-notes.markdown) 
-describing how they simulate GADTs in Scala 2.
-This document was written before GADTs were well-supported in Scala 3.
-
-### Sources
-
-https://github.com/higherkindness/mu-scala
-
-https://github.com/AdrielC/free-arrow
-
-https://github.com/milessabin/shapeless
-
-https://github.com/owlbarn/owl
-
-http://www.cs.nott.ac.uk/~psznhn/Publications/icfp2005.pdf
-
-http://gallium.inria.fr/~fpottier/publis/fpottier-regis-gianas-typed-lr.pdf
-
-http://pauillac.inria.fr/~fpottier/slides/slides-popl04.pdf
-
-https://www.cs.tufts.edu/~nr/cs257/archive/tim-sheard/lang-of-future.pdf
-
-https://infoscience.epfl.ch/record/98468/files/MatchingObjectsWithPatterns-TR.pdf
+The current type system implementation collects such statements only for separate variables, which makes these examples ill-typed.
+Let us explain how we can extend the Kotlin type system to support subtype reconstruction.
 
 # Bounds inference algorithm
 
@@ -320,7 +145,7 @@ that is known to have a value in the specific node of the control-flow graph.
 Output of the algorithm is a set of bounds for type parameters used in types in the intersections
 (or more generally, reachable in this node of the control-flow graph).
 
-This algorithm could be merged with the smart-casting
+This algorithm could be merged with the smart casting
 as it also infers the bound for the real type as well as for type parameters.
 The algorithm consists of two parts, generation of subtyping and equality constraints and their resolution.
 
@@ -639,7 +464,7 @@ so we should store in the flow inferred bounds instead of the intersections.
 
 ## Local type checker state
 
-Compared to smart-casts, which is inferring just another type for the variables,
+Compared to smart casts, which is inferring just another type for the variables,
 inference of the new bounds affects the whole type-checking process.
 To correctly use the inferred bounds, we have to incorporate them into the subtyping check.
 Thus, we have to add a dependency from type-checker to the control-flow graph node which does not exist right now.
@@ -804,7 +629,7 @@ we are able to use the same algorithm to infer local bounds for them.
 With such a feature, 
 the bare types feature could be implemented as a syntactic sugar for the type with existential type parameters.
 As well as we could replace all star projections with implicit existential type parameter, 
-we could natively introduce refinement of the star projections in the smart-casts (and maybe slightly more).
+we could natively introduce refinement of the star projections in the smart casts (and maybe slightly more).
 
 ## Dead code detection
 
@@ -948,4 +773,164 @@ But it is not a big deal as
 
 ## Addendum
 
-* [Prototype implementation](https://github.com/e2e4b6b7/kotlin/pull/2)
+### Prototype
+
+[Prototype implementation](https://github.com/e2e4b6b7/kotlin/pull/2)
+
+### GADT use-cases
+
+[Sources and more examples](https://chrilves.github.io/posts/gadts_by_use_cases/)
+
+#### Runtime subtyping evidence
+
+One easy, but beneficial, benefit of GADTs is expressing relations
+about types like \" $A <: B$\" or \" $A = B$\":
+
+```Kotlin
+sealed interface EqT<A, B>{
+  class Evidence<X> : EqT<X, X>
+}
+
+sealed interface SubT<A, B>{
+  class Evidence<A, B : A> : SubT<A, B>
+}
+```
+
+It may be used like this:
+
+```Kotlin
+fun <A, B> coerce(subT: SubT<B, A>, a: A): B =
+  when (subT) {
+    is SubT.Evidence<*> -> a // Inferred: B :> A
+  }
+```
+
+While in this example, we were able to express this in the constraints for generic parameter. 
+Nevertheless, it may be useful, for example, in case we
+have a complex collection which can be slightly optimized based on any
+property of the stored type (for example, if they are comparable). 
+
+Currently available solutions:
+
+* Write another implementation for each property value. 
+  Require much additional code, abstract classes and may lead to code duplication.
+* Get comparability property as a boolean, enum parameter, or comparator.
+  In this case, 
+  we have to write explicit error-prone casts in each place where we require comparability.
+
+With gadt inference, we can express it more conveniently:
+
+```Kotlin
+sealed interface Comparability<A> {
+    class Comparable<A : kotlin.Comparable<A>> : Comparability<A>
+    class NotComparable<A> : Comparability<A>
+}
+
+...
+
+class ComplexCollection<V>(val comparability: Comparability<V>) {
+  private val values: List<V>
+
+...
+
+  fun doAlgorithm() {
+    when (comparability) {
+      is Comparability.Comparable<*> -> optimizedAlgorithm(values)
+      is Comparability.NotComparable<*> -> defaultAlgorithm(values)
+    }
+  }
+  
+...
+
+fun <V : Comparable<V>> optimizedAlgorithm(values: List<V>)
+fun <V> defaultAlgorithm(values: List<V>)
+```
+
+#### Type-safe extensions
+
+Let's imagine a library with such an architecture:
+
+```Kotlin
+sealed interface Chart<A> {
+    fun draw(chartData: A)
+}
+class PieChart : Chart<PieData>
+class XYChart : Chart<XYData>
+```
+
+If we would like to write an extension that will draw chart in another
+way, then it may look like this:
+
+```Kotlin
+fun <A> Chart<A>.myDraw(chartData: A): Unit =
+  when (this) {
+    is PieChart -> {
+      val pieData = chartData as PieData
+      ... // modify
+      draw(pieData)
+    }
+    else -> draw(chartData)
+  }
+```
+
+The programmer has to explicitly cast data to PieData as he is sure that it is always successful. 
+In this case, it is true and could be inferenced by gadt inference. 
+Then code could become more type-safe and less verbose:
+
+```Kotlin
+fun <A> Chart<A>.myDraw(chartData: A): Unit =
+  when (this) {
+    is PieChart -> {
+      // chartData is PieData in this branch
+      ... // modify
+      draw(chartData)
+    }
+    else -> draw(chartData)
+  }
+```
+
+### Real-world GADT-like examples
+
+1. [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/core/reflection.jvm/src/kotlin/reflect/jvm/internal/calls/ValueClassAwareCaller.kt#L45)
+2. [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/compiler/resolution/src/org/jetbrains/kotlin/resolve/calls/KotlinCallResolver.kt#L165)
+3. [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/compiler/fir/providers/src/org/jetbrains/kotlin/fir/types/TypeUtils.kt#L211-L21)
+4. [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/jps/jps-plugin/src/org/jetbrains/kotlin/jps/model/ProjectSettings.kt#L72-L75)
+
+### Real-world GADT-like use-cases
+
+There are several papers that discuss the use-cases of GADTs[links].
+The main mentioned advantages are:
+
+* Well-typed LR Parser. 
+  GADT allows eliminating some runtime checks which improve performance over non-GADTs implementations.
+* Type-safe AVL Tree.
+  GADT with existential types allows implementing AVL Tree with type-level control of a balance factor.
+* Typed Printf/Scanf Formats.
+  There is a proposal to use GADTs instead of strings to represent printf/scanf formats in OCaml, 
+  which not only improves performance but also fixes potential bugs and stabilizes the code.
+* Event Processing Optimizations.
+  GADTs enabled a number of optimizations in the area of event processing, 
+  which led to performance gains in applications focused on this aspect.
+* Optimization of Combinator Libraries.
+  
+To find existing libraries that use GADTs, 
+especially in Scala, whose type system is the most similar to the Kotlin's of languages with GADTs,
+requires significant work to analyze the codebase of multiple libraries.
+The only one that lies on the surface is fs2, 
+which has a [standalone document](https://github.com/typelevel/fs2/blob/fbd0f25238f0321474816375f1992ecc10e1cc3e/docs/implementation-notes.markdown) 
+describing how they simulate GADTs in Scala 2.
+This document was written before GADTs were well-supported in Scala 3.
+
+### Sources
+
+> TODO: what exactly are these Sources about and how they are different, for example, from the references above?
+
+* https://github.com/higherkindness/mu-scala
+* https://github.com/AdrielC/free-arrow
+* https://github.com/milessabin/shapeless
+* https://github.com/owlbarn/owl
+* http://www.cs.nott.ac.uk/~psznhn/Publications/icfp2005.pdf
+* http://gallium.inria.fr/~fpottier/publis/fpottier-regis-gianas-typed-lr.pdf
+* http://pauillac.inria.fr/~fpottier/slides/slides-popl04.pdf
+* https://www.cs.tufts.edu/~nr/cs257/archive/tim-sheard/lang-of-future.pdf
+* https://infoscience.epfl.ch/record/98468/files/MatchingObjectsWithPatterns-TR.pdf
