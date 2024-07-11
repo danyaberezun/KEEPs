@@ -811,9 +811,7 @@ All these solutions are less type-safe and more prone to human errors.
 
 #### Type-safe extensions
 
-ALMOST DONE
-
-Let's imagine a library with such an architecture:
+Let's say we have a library for chart drawing.
 
 ```Kotlin
 sealed interface Chart<A> {
@@ -823,11 +821,10 @@ class PieChart : Chart<PieData>
 class XYChart : Chart<XYData>
 ```
 
-If we would like to write an extension that will draw chart in another
-way, then it may look like this:
+If we would like to write an extension which draws pie charts differently, it may look like this:
 
 ```Kotlin
-fun <A> Chart<A>.myDraw(chartData: A): Unit =
+fun <A> Chart<A>.customDraw(chartData: A): Unit =
   when (this) {
     is PieChart -> {
       val pieData = chartData as PieData
@@ -838,15 +835,15 @@ fun <A> Chart<A>.myDraw(chartData: A): Unit =
   }
 ```
 
-The programmer has to explicitly cast data to PieData as he is sure that it is always successful. 
-In this case, it is true and could be inferenced by gadt inference. 
-Then code could become more type-safe and less verbose:
+The programmer has to explicitly cast `chartData` to `PieData`, however this could be inferred by subtype reconstruction. 
+The resulting code becomes more type-safe and less verbose.
 
 ```Kotlin
-fun <A> Chart<A>.myDraw(chartData: A): Unit =
+fun <A> Chart<A>.customDraw(chartData: A): Unit =
   when (this) {
     is PieChart -> {
-      // chartData is PieData in this branch
+      // We know that `A =:= PieData` here
+      //   aka we know that chartData is PieData
       ... // modify
       draw(chartData)
     }
