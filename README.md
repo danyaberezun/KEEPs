@@ -3,6 +3,7 @@
 > TODO: We should do something with the general formatting problem (aka $...$ being not nicely supported in rendering)
 
 ## Introduction
+
 ### (Generalized) algebraic data types 
 
 Kotlin currently allows one to declare algebraic data types, or *ADT*, via sealed classes/interfaces and data classes.
@@ -50,6 +51,45 @@ That is, we locally use the information stored in GADTs in specific branches of 
 Without the ability to do generalized pattern matching, GADTs lose most of their safety and expressive power.
 
 As follows from these points, GADTs are most useful in applications where compile- and run-time type safety is especially important, for example, complex DSLs, strongly-typed evaluators, generic data structure pretty-printing, traversals and queries, or database access.
+
+#### Real-world GADT-like examples in Kotlin
+
+1. [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/core/reflection.jvm/src/kotlin/reflect/jvm/internal/calls/ValueClassAwareCaller.kt#L45)
+2. [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/compiler/resolution/src/org/jetbrains/kotlin/resolve/calls/KotlinCallResolver.kt#L165)
+3. [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/compiler/fir/providers/src/org/jetbrains/kotlin/fir/types/TypeUtils.kt#L211-L21)
+4. [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/jps/jps-plugin/src/org/jetbrains/kotlin/jps/model/ProjectSettings.kt#L72-L75)
+
+> For more advanced examples, see [More advanced GADT-like use-cases section](...) in Addendum.
+
+> TODO: Maybe also inline one or two most intersting examples here, so that the reader can immediately see the code and the impact of GADTs?
+> And also highlight the problematic places aka manual type checks / casts?
+
+<!---
+#### Real-world GADT-like use-cases in Kotlin
+
+There are several papers that discuss the use-cases of GADTs[links].
+The main mentioned advantages are:
+
+* Well-typed LR Parser. 
+  GADT allows eliminating some runtime checks which improve performance over non-GADTs implementations.
+* Type-safe AVL Tree.
+  GADT with existential types allows implementing AVL Tree with type-level control of a balance factor.
+* Typed Printf/Scanf Formats.
+  There is a proposal to use GADTs instead of strings to represent printf/scanf formats in OCaml, 
+  which not only improves performance but also fixes potential bugs and stabilizes the code.
+* Event Processing Optimizations.
+  GADTs enabled a number of optimizations in the area of event processing, 
+  which led to performance gains in applications focused on this aspect.
+* Optimization of Combinator Libraries.
+  
+To find existing libraries that use GADTs, 
+especially in Scala, whose type system is the most similar to the Kotlin's of languages with GADTs,
+requires significant work to analyze the codebase of multiple libraries.
+The only one that lies on the surface is fs2, 
+which has a [standalone document](https://github.com/typelevel/fs2/blob/fbd0f25238f0321474816375f1992ecc10e1cc3e/docs/implementation-notes.markdown) 
+describing how they simulate GADTs in Scala 2.
+This document was written before GADTs were well-supported in Scala 3.
+--->
 
 ### GADTs in Kotlin
 
@@ -483,29 +523,31 @@ fun <T> foo(v: Box<T>) {
 }
 ```
 
-However, if there is no expected type, ...
+However, if there is no expected type, in many cases the subtype reconstruction information alone will not be able to help us.
 
 ```Kotlin
 fun <T> foo(v: Box<T>): T {
     val t = when (v) {
-        is BoxString -> "string"
-        is BoxInt -> 1
+        is BoxString -> "string" // [T =:= String]
+        is BoxInt -> 1 // [T =:= Int]
     }
+    // Subtype reconstruction results on T are empty
+    //   merge([T =:= String], [T =:= Int]) = []
+
+    // t is inferred to be of type Comparable<*>
+    //   and we actually have no reason to try and infer it
+    //   to T & Comparable<*>
     return t
 }
 ```
 
-As we do not know the expected type of the expression, 
-we could not cast `Int` or `String` in the respecting branches to the type `T`.
-And at the moment we are trying to intersect them, 
-we had already lost the information about the local bounds of T.
+> TODO: consider changing the CFG shape to support this case?
 
-## Overload resolution
+### When there is overload resolution
 
-The main place where the absence of an expected type arises is in arguments of a function call.
-Due to type-based resolution, the arguments of a call do not actually have an expected type.
+Overload resolution is another case when we do not have an expected type, which stops us from using the subtype reconstruction results.
 
-Let's consider the following example:
+Let's consider the following example.
 
 ```kotlin
 sealed interface Box<T>
@@ -520,30 +562,40 @@ fun <T> bar(t: T, b: Box<T>) = foo(when (b) {
 })
 ```
 
-One may expect that the type of the argument of `foo`'s call in will be resolved into 
-`Int` and the corresponding `foo`'s overload will be called, resulting in printing "Int".
-Unfortunately, this is not the case.
-Since the actual expected type is unknown, 
-the inferred type for the expression in the argument is `T`, 
-and call resolves the overload with `Any?`.
-Even more, if we completely remove this overload, 
-we will get a compilation error as none of the overloads is applicable.
-If we then remove the overload with `String`, 
-then `foo` will be successfully resolved to the only remaining declaration of `foo`.
-This happens because in case we only have one overload, we can use it to get the expected type, 
-and with the help of this type we are able to infer the type `Int` for this argument.
+Since the actual expected type for the argument of `foo` is unknown, 
+the inferred type for the argument expression is `T` (similarly to the example above), and we resolve the call to `foo(a: Any?)`.
 
-The real problem here is that we do not actually choose the most specific overload for a given expression, 
-but rather for arguments' type, which may be inferred in different ways.
-This behaviour may be confusing for the programmers, so it should be explicitly documented.
+In case we do not have any overload resolution involved (aka if we then remove the overloads with `Any?` and `String`), then `foo` will be successfully resolved to `foo(i: Int)`, if we perform subtype reconstruction.
+This happens because in case we only have one overload, we can use it to get the expected type, and with it we are able to infer `Int` for the argument.
 
-# Related features
+### Can we fix these problems?
 
-## Bare types
+We do not have a good universal solution for these problems.
 
-Gadt inference would be useful to infer bounds for bare types as well. 
-Bare types are the types with omitted type parameters.
-They are designed to use in cases like this:
+One of the possible solutions could be to preserve the constraint information
+in the inferred types.
+For the `when` example, when propagating the type `Int`, knowing that we also have `T =:= Int`, we could transform the type into `T & Int`.
+Together with `T & String`, we could then infer `T & Comparable<*>` for the whole `when` expression.
+
+However, for more complex subtype reconstruction results, this naive solution does not work.
+For example, assume we have `T <: Box<T>`.
+If we transform the type to `T & Box<T>`, we would not be able to type check against expected type `Box<out Box<T>>`.
+
+Fundamentally, this means we may need to add ways to encode recursuve types (aka `µ` type) or some other ways to propagate such complex (e.g., recursive) constraints in the type system.
+
+We leave the solutions to these problems for possible future work.
+
+## Feature interaction
+
+Subtype reconstruction potentially interacts with multiple other Kotlin features.
+Here we describe these interactions and how they improve Kotlin.
+
+> Note: all these interactions and improvements are *optional*, meaning they could be added, but it is not mandatory for the subtype reconstruction to work.
+
+### Bare types
+
+Subtype reconstruction has an interesting interaction with inference of bare types.
+Bare type interence happens for cases when there are generic types with omitted type parameters, for example, in the following code.
 
 ```Kotlin
 fun <T> foo(l: Collection<T>) {
@@ -554,22 +606,27 @@ fun <T> foo(l: Collection<T>) {
 }
 ```
 
-Type parameters of bare types are inferred from the type of the scrutinee.
-Inference of the type parameters is highly related to the GADT inference.
-We have to infer all the bounds for the type parameters of the cast type 
-based on the information that the value is both of original type and cast type with all arguments as `*`.
-As the algorithm has to replace the star projections with temporary type variables 
-(to manage constraints like $B :> * :> A$),
-it is also inferring the bounds for such variables.
-The next step would be to encode the type parameters to satisfy inferred bounds.
+Now, type parameters of bare types are inferred from the type parameters of the is-checked value.
+And this bare type inference is fundamentally a restricted and flawed version of the subtype reconstruction algorithm.
 
-## Smart casts
+The flaws come from the handling of projections, which are not approximated when needed.
 
-The other existing feature that could be positively affected by the GADT inference is the smart casts.
-As the smart cast is natively collecting the information about the types of the value in the specific branch,
-we could use this information to specialize them. 
-More precisely, we could specialize the type parameters that could be placed instead of the star projections. 
-For example, in such a case:
+```Kotlin
+private fun <E> List<E>.addAnything(element: E) {
+    if (this is MutableList) {
+        // Bare type inference: MutableList<E>
+        // Subtype reconstruction: MutableList<out E>
+        this.add(element)
+    }
+}
+```
+
+This means that adding subtype reconstruction could also improve bare type inference.
+
+### Smart casts
+
+The other existing feature that is affected by subtype reconstruction is smart casts.
+We could add the information from the subtype reconstruction, so that it is usable by the smart casts, for example:
 
 ```Kotlin
 interface A<in T, in V>
@@ -578,46 +635,33 @@ interface A2<in T> : A<T, Int>
 
 fun f(v: A1<*>) {
     val v1 : A2<Int> = when (v) {
-        is A2<*> -> v
+        is A2<*> -> v // Now: A1<*> & A2<*>
+                      // With subtype reconstruction: A1<Int> & A2<Int>
         else -> throw Exception()
     }
 }
 ```
 
-We could infer the type `{A1<Int> & A2<Int>}` instead of the current `{A1<*> & A2<*>}`.
-And then this code could be successfully typechecked.
+### Unreachable code detection
 
-## Existential types
+To detect more unreachable code, using the additional type constraints from the subtype reconstruction, we can run the type inference algorithm and then check that all inferred constraints are satisfiable.
 
-The other possible feature of the type system that could bring them all together is the existential types.
-As the behaviour of the existential types is quite similar to the behaviour of the generic parameters, 
-we are able to use the same algorithm to infer local bounds for them.
-With such a feature, 
-the bare types feature could be implemented as a syntactic sugar for the type with existential type parameters.
-As well as we could replace all star projections with implicit existential type parameter, 
-we could natively introduce refinement of the star projections in the smart casts (and maybe slightly more).
+The constraints are satisfiable if for each type parameter and variable, their types are inhabited, i.e., there exists at least one type satisfying all their constraints.
+To check this, we can use the following algorithm.
 
-## Dead code detection
+1. Find all types that are the least common supertypes for all lower bounds.
+2. Check that any of those types is a subtype of all upper bounds.
 
-To detect unreachable code, or conditions that are unsatisfiable,
-we have to run the same inference algorithm and then check if the inferred constraints are satisfiable.
+If there is no such type, then the constraints are unsatisfiable, meaning the code with these constraints is unreachable.
 
-The constraints are satisfiable if
-for each type parameter and temporary variable (representing a real type),
-there is at least one type satisfying all constraints.
-To check this, we have to run the following algorithm:
+A simple, but incomplete approximation of this property is to check whether all of the lowerbounds are subtypes of all of the upperbounds.
 
-1. Find all types that are the least common supertypes for all lowerbounds.
-2. Check that any of those types is a subtype of all upperbounds.
+> TODO: maybe add an example of how subtype reconstruction can help with dead code detection?
 
-If there is no such a type, then the constraints are unsatisfiable and condition is always false.
+### Exhaustiveness checking
 
-The simple, but incomplete approximation of this property is
-to check whether all of the lowerbounds are subtypes of all of the upperbounds.
-
-### Exhaustiveness check
-
-The issue with the exhaustiveness check is that such a code is marked as non-exhaustive (Both K1 and K2):
+Additional information from type constraints could also be used to improve exhaustiveness checks.
+For example, this code is marked as non-exhaustive.
 
 ```Kotlin
 interface A
@@ -630,11 +674,13 @@ class IB : I<B>
 fun <T : A> f(i: I<T>) {
     when (i) {
         is IA -> TODO()
+        // IB is impossible,
+        // as `T <: A & IB <: I<T>` is unsatisfiable
     }
 }
 ```
 
-And such a code is marked as correct in K2 and failed with incompatible types error in K1:
+And the following code is marked as correct in Kotlin 2.0.
 
 ```Kotlin
 interface A
@@ -648,22 +694,35 @@ fun <T : A> f(i: I<T>) {
     when (i) {
         is IA -> TODO()
         is IB -> TODO()
+        // IB is still impossible,
+        // as `T <: A & IB <: I<T>` is still unsatisfiable
     }
 }
 ```
 
-So Kotlin for now does not check the exhaustiveness of the branches based on the type parameters.
-But this feature is usually associated with the GADT inference.
+At the moment, Kotlin does not consider satisfiability of all available type constraints in exhaustiveness checking.
+But this feature is one of the important parts of the GADT generalized pattern matching.
 
-To implement such a check, we may re-use the same algorithm as for the inference of unsatisfiable conditions.
-In this case, we have to infer constraints for each unmatched classifier
-and remove classifiers that are leading to unsatisfiable constraints.
+To implement better exhaustiveness checking, we can reuse the same idea as for the detection of unreachable code.
+In this case, we have to infer constraints for each unmatched classifier and remove classifiers that are impossible aka have unsatisfiable constraints.
 
-# Breaking changes
+<!---
+### Existential types
 
-## Resolution changes
+The other possible feature of the type system that could bring them all together is the existential types.
+As the behaviour of the existential types is quite similar to the behaviour of the generic parameters, 
+we are able to use the same algorithm to infer local bounds for them.
+With such a feature, 
+the bare types feature could be implemented as a syntactic sugar for the type with existential type parameters.
+As well as we could replace all star projections with implicit existential type parameter, 
+we could natively introduce refinement of the star projections in the smart casts (and maybe slightly more).
+--->
 
-As we will extend the type hierarchy, it may affect the resolution based on the type.
+## Possible breaking changes
+
+### Overload resolution changes
+
+As we will extend the type information, aka infer more precise types if subtype reconstruction is available, it may affect the overload resolution results.
 For example:
 
 ```Kotlin
@@ -679,63 +738,27 @@ fun <T> f(b: B, out: Out<T>) {
     
     when (out) {
         is OutB -> {
-            // we inferred that T :> B
+            // we infer that T :> B
             
             b.foo()
-            // was: resolved to A.foo()
-            // will be: resolved to A.foo() and T.foo(), ambiguity error
+            // before: resolved to A.foo()
+            // now: resolved to A.foo() and T.foo(), ambiguity error
         }
         else -> TODO()
     }
 }
 ```
 
-As we only may infer new supertypes (and subtypes), 
-it will never lead to the resolution changes, 
-only to the new compilation errors. 
-But it is not a big deal as
-* One of the functions has to be a local function on the generic parameter, which is not a common case.
-* It may be automatically fixed with the migration tool.
+While this is technically a problem, in general [we do not consider](https://kotlinlang.org/docs/kotlin-evolution.html#libraries) overload resolution changes caused by inference of more precise types as a breaking change.
 
-# References
+## References
 
-1.  [Presentation of the implementation in Scala 3 from the typelevel summit](https://www.youtube.com/watch?v=VV9lPg3fNl8)
-
-2.  [Outline of the implementation in Scala 3](https://dl.acm.org/doi/pdf/10.1145/3563342) 
-    (Section 6.2)
-
-3.  [First formalization for C#](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/gadtoop.pdf)
-    (Section 5.1)
+1. [Presentation of the Scala 3 implementation from the typelevel summit](https://www.youtube.com/watch?v=VV9lPg3fNl8)
+2. [Description of the Scala 3 implementation](https://dl.acm.org/doi/pdf/10.1145/3563342) (Section 6.2)
+3. [Formalization of GADTs for C#](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/gadtoop.pdf) (Section 5.1)
 
 [//]: # (4.  [Dotty PR 1]&#40;https://github.com/lampepfl/dotty/pull/5736&#41;, )
 [//]: # (    [Dotty PR 2]&#40;https://github.com/lampepfl/dotty/pull/6398&#41;)
-
-# Examples
-
-1.  For code showing the unsoundness of the GADTs in Scala 2:
-
-    ```Kotlin
-    open class C<out T>
-    data class D<S>(var s: S) : C<S>()
-
-    fun main() {
-      val x = D("")
-      val y: C<Any> = x
-
-      when (y) {
-        is D<*> -> {
-          // Should not typecheck! 
-          // But it does in Scala2, fixed in Scala3
-          y.s = Integer(1) // Scala2: y is D<Any> 
-        }
-      }
-      val z: String = x.s as String
-      // Scala2: ClassCastException: Integer cannot be cast to String
-    }
-    ```
-
-    We will result a constraints $S_{real} <: Any$ which is not enough
-    to infer $S_{real}$ due to absence of variance in $D$.
 
 ## Addendum
 
@@ -743,14 +766,13 @@ But it is not a big deal as
 
 [Prototype implementation](https://github.com/e2e4b6b7/kotlin/pull/2)
 
-### GADT use-cases
+### More advanced GADT-like use-cases
 
 [Sources and more examples](https://chrilves.github.io/posts/gadts_by_use_cases/)
 
 #### Runtime subtyping evidence
 
-One easy, but beneficial, benefit of GADTs is expressing relations
-about types like \" $A <: B$\" or \" $A = B$\":
+One simple, but useful in some domains (e.g., type-safe DSLs for data queries), benefit of GADTs is the ability to express, store and use type relations such as $A <: B$ or $A =:= B$ in your code.
 
 ```Kotlin
 sealed interface EqT<A, B>{
@@ -765,54 +787,31 @@ sealed interface SubT<A, B>{
 It may be used like this:
 
 ```Kotlin
-fun <A, B> coerce(subT: SubT<B, A>, a: A): B =
-  when (subT) {
-    is SubT.Evidence<*> -> a // Inferred: B :> A
-  }
-```
-
-While in this example, we were able to express this in the constraints for generic parameter. 
-Nevertheless, it may be useful, for example, in case we
-have a complex collection which can be slightly optimized based on any
-property of the stored type (for example, if they are comparable). 
-
-Currently available solutions:
-
-* Write another implementation for each property value. 
-  Require much additional code, abstract classes and may lead to code duplication.
-* Get comparability property as a boolean, enum parameter, or comparator.
-  In this case, 
-  we have to write explicit error-prone casts in each place where we require comparability.
-
-With gadt inference, we can express it more conveniently:
-
-```Kotlin
-sealed interface Comparability<A> {
-    class Comparable<A : kotlin.Comparable<A>> : Comparability<A>
-    class NotComparable<A> : Comparability<A>
-}
-
-...
-
-class ComplexCollection<V>(val comparability: Comparability<V>) {
-  private val values: List<V>
-
-...
-
-  fun doAlgorithm() {
-    when (comparability) {
-      is Comparability.Comparable<*> -> optimizedAlgorithm(values)
-      is Comparability.NotComparable<*> -> defaultAlgorithm(values)
+class Data<S, D> {
+  val value: D = ...
+  // ...
+  fun coerceJsonToString(ev: EqT<D, JsonNode>): Data<S, String> =
+    when (ev) {
+      is EqT.Evidence<*> -> Data(this.value.convertJsonNodeToString())
+      // Inferred: D =:= JsonNode
+      //   e.g. it is type-safe to do this.value.convertJsonNodeToString()
     }
-  }
-  
-...
-
-fun <V : Comparable<V>> optimizedAlgorithm(values: List<V>)
-fun <V> defaultAlgorithm(values: List<V>)
+  // ...
+}
 ```
+
+Without the subtype reconstruction, you could have the following solutions to this problem.
+
+* Write or generate separate implementations for each possible combination of types.
+  This will require much additional code with significant code duplication.
+* Pass the type relation properties as other values (e.g., as a boolean, enum value or a string).
+  In this case, we have to explicitly write error-prone casts in every place where we rely on the type relations.
+
+All these solutions are less type-safe and more prone to human errors.
 
 #### Type-safe extensions
+
+ALMOST DONE
 
 Let's imagine a library with such an architecture:
 
@@ -855,37 +854,34 @@ fun <A> Chart<A>.myDraw(chartData: A): Unit =
   }
 ```
 
-### Real-world GADT-like examples
+<!---
+### Other examples
 
-1. [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/core/reflection.jvm/src/kotlin/reflect/jvm/internal/calls/ValueClassAwareCaller.kt#L45)
-2. [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/compiler/resolution/src/org/jetbrains/kotlin/resolve/calls/KotlinCallResolver.kt#L165)
-3. [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/compiler/fir/providers/src/org/jetbrains/kotlin/fir/types/TypeUtils.kt#L211-L21)
-4. [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/jps/jps-plugin/src/org/jetbrains/kotlin/jps/model/ProjectSettings.kt#L72-L75)
+#### Unsoundness of GADTs in Scala 2
 
-### Real-world GADT-like use-cases
+```Kotlin
+open class C<out T>
+data class D<S>(var s: S) : C<S>()
 
-There are several papers that discuss the use-cases of GADTs[links].
-The main mentioned advantages are:
+fun main() {
+  val x = D("")
+  val y: C<Any> = x
 
-* Well-typed LR Parser. 
-  GADT allows eliminating some runtime checks which improve performance over non-GADTs implementations.
-* Type-safe AVL Tree.
-  GADT with existential types allows implementing AVL Tree with type-level control of a balance factor.
-* Typed Printf/Scanf Formats.
-  There is a proposal to use GADTs instead of strings to represent printf/scanf formats in OCaml, 
-  which not only improves performance but also fixes potential bugs and stabilizes the code.
-* Event Processing Optimizations.
-  GADTs enabled a number of optimizations in the area of event processing, 
-  which led to performance gains in applications focused on this aspect.
-* Optimization of Combinator Libraries.
-  
-To find existing libraries that use GADTs, 
-especially in Scala, whose type system is the most similar to the Kotlin's of languages with GADTs,
-requires significant work to analyze the codebase of multiple libraries.
-The only one that lies on the surface is fs2, 
-which has a [standalone document](https://github.com/typelevel/fs2/blob/fbd0f25238f0321474816375f1992ecc10e1cc3e/docs/implementation-notes.markdown) 
-describing how they simulate GADTs in Scala 2.
-This document was written before GADTs were well-supported in Scala 3.
+  when (y) {
+    is D<*> -> {
+      // Should not typecheck,
+      // but it does in Scala 2!
+      //   (in Scala 3 this has been fixed)
+      y.s = Integer(1) // Scala 2: y is D<Any> 
+    }
+  }
+  val z: String = x.s as String
+  // Scala 2: ClassCastException: Integer cannot be cast to String
+}
+```
+
+We would get a constraints $S_{real} <: Any$ which is not enough to infer $S_{real}$ due to the absence of variance in $D$.
+--->
 
 ### Sources
 
