@@ -2,6 +2,8 @@
 
 > TODO: We should do something with the general formatting problem (aka $...$ being not nicely supported in rendering)
 
+> TODO: Consider renaming subtype reconstruction to subtyping reconstuction.
+
 ## Introduction
 
 ### (Generalized) algebraic data types 
@@ -140,7 +142,7 @@ We will call this *"subtype reconstruction"*, as its core idea is to reconstruct
 Kotlin has a flow-sensitive type system, in order to support smart casts, i.e. it collects information about possible types of values in a flow-sensitive way, meaning it can track that a value has two possible types and it can know if these types are related.
 Since this information is not limited to `when`-expressions, it allows us to have general subtype reconstruction which is not limited to pattern matching only.
 
-For example, the four examples below are actually well-typed as in all these cases we know that `e` is of both `ExprIntLit` and `Expr<T>` types, which means that `T = Int`.
+For example, the four examples below are actually well-formed as in all these cases we know that `e` is of both `ExprIntLit` and `Expr<T>` types, which means that `T =:= Int`.
 
 ```Kotlin
 sealed class Expr<out T>
@@ -172,10 +174,7 @@ fun <T> evalEquality(e1: Expr<T>, e2: ExprIntLit): T {
 }
 ```
 
-> TODO: previously we said that only the last three examples do not work, but for me all four examples have RETURN_TYPE_MISMATCH.
-> Could we double check what happens here?
-
-The current type system implementation collects such statements only for separate variables, which makes these examples ill-typed.
+The current type system implementation collects such statements (smart casts) only for separate variables, which makes these examples ill-typed.
 Let us explain how we can extend the Kotlin type system to support subtype reconstruction.
 
 ## Subtype reconstruction
@@ -375,8 +374,6 @@ Consequently, if there is a solution for the original set of constraints, then t
 
 To implement this, we have to adopt the existing resolution algorithm to this new relaxed strategy.
 
-> TODO: And how do we do that? How did we do that in the prototype?
-
 #### Examples of constraint resolution
 
 ##### Resolution of type variable constraint
@@ -395,7 +392,8 @@ If we would like to satisfy a constraint `A :> B & C`, this results in a disjoin
 As stated [here](https://youtu.be/VV9lPg3fNl8?t=1391), if Scala GADT algorithm encounters such situation, these disjoint constraints are skipped. 
 In case if all-except-one of the disjoint constraints are immediately unsatisfied, then such a constraint could be processed.
 
-> TODO: Again, what do we do here? What do we do in the prototype?
+In the current algorithm we propose to adopt the Scala approach and ignore such constraints.
+However, it is possible to consider implementing some kind of heuristics to handle these constraints.
 
 ##### Resolution with flexible types
 
@@ -405,6 +403,10 @@ More precisely:
 * $A :> B..C => A :> C$
 * $B..C :> A => B :> A$
 * $A = B..C => B :> A, A :> C$
+
+##### Resolution with nullable types
+
+> TODO: describe that if all constraints work with nullable types, we should NOT do subtype reconstruction, as `null` is a bad evidence for subtyping relations.
 
 #### Special cases
 
@@ -426,14 +428,14 @@ class In<in T>
 
 > TODO: Please check that the examples are correct w.r.t. Inv/Out/In
 
-1. If the algorithm produces constraint $T :> Out<(Captured(*))>$, then this only provides us information that `T` is not nullable and $Out<T> :> Out<Out<Any?>>$.
+1. If the algorithm produces constraint $T :> Out<Captured(*)>$, then this only provides us information that `T` is not nullable and $Out<T> :> Out<Out<Any?>>$.
    While if we approximated it, we would get $T :> Out<*>$, which leads to $T :> Out<*> :> Out<Int>$, and this is unsound with respect to the original constraint.
 
 2. If the algorithm produces constraint $T :> In<Inv<Captured(*)>>$, 
    we will be able to approximate this constraint to $T :> In<Inv<*>>$.
 
 3. On the contrary, for captured types in the constraint upper bounds,
-   we are able to approximate the constraint $T <: In<(Captured(*))>$, but not $T <: In<Inv<Captured(*)>>$.
+   we are able to approximate the constraint $T <: In<Captured(*)>$, but not $T <: In<Inv<Captured(*)>>$.
 
 > TODO: Add a more detailed explanation above for the stupid readers, why exactly things do not work for upper bounds.
 
@@ -441,7 +443,7 @@ The core principle is that by approximating a type with captured types during su
 Meaning we can do it only if it relaxes the constraint.
 
 We are loosing some type information with this relaxation, specifically we lose the equalities between the captured types (and their corresponding existential variables).
-For example, if we have a constraints $V = Inv<(Captured(*))>$ and $U = Inv<(Captured(*))>$, where the captured types are equal, we should be able to call a function `fun <T> foo(i1: Inv<T>, i2: Inv<T>)` with the values of types `V` and `U`.
+For example, if we have a constraints $V = Inv<Captured(*)>$ and $U = Inv<Captured(*)>$, where the captured types are equal, we should be able to call a function `fun <T> foo(i1: Inv<T>, i2: Inv<T>)` with the values of types `V` and `U`.
 But after approximation this information will be lost.
 
 > For example, such code with captured type equalities happens when you are working with data structures that are controlling some invariants on the type level, for example, AVL tree with type-level control of the balance factor.
@@ -765,6 +767,8 @@ While this is technically a problem, in general [we do not consider](https://kot
 ### Prototype
 
 [Prototype implementation](https://github.com/e2e4b6b7/kotlin/pull/2)
+
+> TODO: Describe in a bit more details prototype limitations.
 
 ### More advanced GADT-like use-cases
 
