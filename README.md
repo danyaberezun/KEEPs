@@ -1,5 +1,7 @@
 # Subtype reconstruction aka GADT-style inference
 
+> TODO: We should do something with the general formatting problem (aka $...$ being not nicely supported in rendering)
+
 ## Introduction
 ### (Generalized) algebraic data types 
 
@@ -194,7 +196,7 @@ This is justified by the following paragraph of the Kotlin specification.
 > The transitive closure S∗(T) of the set of type supertypes S(T : \(S_1\), . . . , \(S_m\)) = {\(S_1\), . . . , \(S_m\)} ∪ S(\(S_1\)) ∪ . . . ∪ S(\(S_m\))
 > is consistent, i.e., does not contain two parameterized types with different type arguments.
 
-#### Examples
+#### Examples of constraint generation
 
 ##### Simple example
 
@@ -335,7 +337,7 @@ To implement this, we have to adopt the existing resolution algorithm to this ne
 
 > TODO: And how do we do that? How did we do that in the prototype?
 
-#### Examples
+#### Examples of constraint resolution
 
 ##### Resolution of type variable constraint
 
@@ -366,7 +368,7 @@ More precisely:
 
 #### Special cases
 
-##### Projections
+##### Type projections
 
 Projections are handled by the resolution algorithm via capturing.
 As a result of this, we will have some constraints which may contain captured types.
@@ -417,21 +419,21 @@ The possible solutions to this loss of precision are
 
 > TODO: Why do we think that? I have a feeling we need to do some additional work to improve captured types, simply keeping them in the constraints is not enough?
 
-## Subtype reconstruction in Kotlin flow-sensitive type system
+## Adding subtype reconstruction to Kotlin flow-sensitive type system
 
 Now that we have an algorithm which allows us to infer additional information about types, we need to integrate this algorithm to our flow-sensitive type system.
 Here we explain the steps needed to achieve that.
 
-### New type of control-flow graph statements
+### New types of control-flow graph statements
 
-RESUME FROM HERE
+We introduce a new type of statements handled by the data-flow analysis, called *type intersection*.
+Type intersection statement with types `T1 & T2 & ...`says that, in a specific node of a control-flow graph, a value definitely has a set of types `T1 & T2 & ...`, and these types should be used for subtype reconstruction.
 
-We introduce a new type of statements collected by the data-flow analysis, called *type intersection*.
-Type intersection is a set of types 
-that are known to have a common value in the specific node of the control-flow graph.
+> TODO: Why not just do subtype reconstruction for all values that have intersection types somewhere? Why do we need special statements for this?
 
-The issue with such statements is that they are not eligible for intersection of flows.
-For example, in the following code:
+After type intersection statements are handled by the subtype reconstruction, we get additional type constraints, which are also stored and used by the data-flow analysis as *subtype reconstruction result* statements.
+
+For example, let us consider the following code.
 
 ```Kotlin
 open class Box<T>
@@ -442,75 +444,46 @@ interface ListString : List<String>
 fun <T> foo(box: Box<T>, list: List<T>): T {
     if (...) {
         box as BoxString
-        // We know that T = String here
+        // Type intersection statement: [{Box<T> & BoxString}]
+        // Subtype reconstruction results: [T = String]
     } else {
         list as ListString
-        // We know that T :> String here
+        // Type intersection statement: [{List<T> & ListString}]
+        // Subtype reconstruction results: [T :> String]
     }
-    // We should know that T :> String here
+    // Merged subtype reconstruction results: [T :> String]
 }
 ```
 
-We are able to infer that `T :> String` in the end of the function. 
-As we could not easily intersect statements `[{List<T> & ListString}]` and `[{Box<T> & BoxString}]`, 
-so we should store in the flow inferred bounds instead of the intersections.
+We are able to infer that `T :> String` in the end of the function, because we can merge different subtype reconstruction results from different control-flow graph branches.
+In other words, type intersection statements *locally* add information used by the subtype reconstruction algorithm, which creates subtype reconstruction results used *globally* in a flow-sensitive way.
 
-## Local type checker state
+### Flow-sensitive type checker state
 
-Compared to smart casts, which is inferring just another type for the variables,
-inference of the new bounds affects the whole type-checking process.
-To correctly use the inferred bounds, we have to incorporate them into the subtyping check.
-Thus, we have to add a dependency from type-checker to the control-flow graph node which does not exist right now.
+Compared to regular smart casts, which are simply refining variable types, subtype reconstruction adds arbitrary new type constraints.
+To use them, we have to incorporate them into the type system when needed.
+As in different control-flow graph nodes these constraints might be different, it means the type checker state becomes "flow-sensitive", i.e., it additionally depends on the data-flow analysis state.
 
-To demonstrate the problem, let's remember the following code:
+### Examples
 
-```Kotlin
-fun <A> Chart<A>.myDraw(chartData: A): Unit =
-    when (this) {
-        is PieChart -> {
-            // chartData is PieData in this branch
-            ... // modify
-            draw(chartData)
-        }
-        else -> draw(chartData)
-    }
-```
+> TODO: Move some of the general examples of subtype reconstruction here.
 
-inference of the bounds from one variable affects the type of another variable, 
-which could not be easily represented in the current type-checker. 
+## When subtype reconstruction is not enough
 
-## Proper processing of the expected type
+### When there is no expected type
 
-To incorporate a new bound into the subtyping check is not enough as, for example, for when expression, 
-we have such a hierarchy of nodes:
-
-* *when* expression
-   * *when* branch
-     * *when* branch body
-
-And we may infer the bounds only in the "*when* branch body" node, 
-but would like to use them in the "*when* expression 
-while checking the conformance of all the branches to the expected type.
-
-The current implementation checks the expected type in the place where it was generated, 
-while, to correctly take GADT inference into account, 
-we have to check the expected type more often
-and in case of success, replace the inferred type of the expression with the expected one.
-
-## Case without an expected type
-
-While to typecheck the expression with the expected type is not a problem, and this code could be easily typechecked:
+Typechecking expressions, when there is an expected type dependent on subtype reconstruction results, is not a problem, as the following example demonstrates.
 
 ```Kotlin
 fun <T> foo(v: Box<T>) {
     val t: T = when (v) {
-        is BoxString -> "string"
-        is BoxInt -> 1
+        is BoxString -> "string" // [T =:= String]
+        is BoxInt -> 1 // [T =:= Int]
     }
 }
 ```
 
-The following code could not be easily typechecked as we do not know the expected type of the expression:
+However, if there is no expected type, ...
 
 ```Kotlin
 fun <T> foo(v: Box<T>): T {
