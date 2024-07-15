@@ -1,7 +1,5 @@
 # Subtyping reconstruction aka GADT-style inference
 
-> TODO: We should do something with the general formatting problem (aka $...$ being not nicely supported in rendering)
-
 ## Introduction
 
 ### (Generalized) algebraic data types 
@@ -293,9 +291,9 @@ Let's follow the algorithm step by step.
 
 * Stage 1. Not applicable.
 * Stage 2. Do type projection on `Expr<T>` to get `Expr<R>` (where `R` is a fresh type variable) and on `ExprInt` to get `ExprInt`.
-* Stage 3. Record the constraints $Expr<T> :> Expr<R>$ and $ExprInt :> ExprInt$.
-* Stage 4. For the lowest common classifier `Expr`, upcast the corresponding projections and get types $Expr<R>$ and $Expr<Int>$.
-* Stage 5. Record the constraint $Expr<R> =:= Expr<Int>$.
+* Stage 3. Record the constraints $Expr\langle T\rangle :> Expr\langle R\rangle$ and $ExprInt :> ExprInt$.
+* Stage 4. For the lowest common classifier `Expr`, upcast the corresponding projections and get types $Expr\langle R\rangle$ and $Expr\langle Int\rangle$.
+* Stage 5. Record the constraint $Expr\langle R\rangle =:= Expr\langle Int\rangle$.
 
 ##### Example with several lowest common classifiers
 
@@ -324,13 +322,13 @@ Let's follow the algorithm step by step.
 
 * Stage 1. Not applicable.
 * Stage 2. Do type projection on `TExpr<E, T>` to get `TExpr<R1, R2>` (where `R1` and `R2` are fresh type variables) and `ExprInt` to get `ExprInt`.
-* Stage 3. Record the constraints $TExpr<E, T> :> TExpr<R1, R2>$ and $ExprInt :> ExprInt$.
+* Stage 3. Record the constraints $TExpr\langle E, T\rangle :> TExpr\langle R1, R2\rangle$ and $ExprInt :> ExprInt$.
 * Stage 4.
-    * For the lowest common classifier `Expr`, upcast the corresponding projections and get types $Expr<R1>$ and $Expr<Int>$.
-    * For the lowest common classifier `Tag`, upcast the corresponding projections and get types $Tag<R2>$ and $Tag<String>$.
+    * For the lowest common classifier `Expr`, upcast the corresponding projections and get types $Expr\langle R1\rangle$ and $Expr\langle Int\rangle$.
+    * For the lowest common classifier `Tag`, upcast the corresponding projections and get types $Tag\langle R2\rangle$ and $Tag\langle String\rangle$.
 * Stage 5.
-    * Record the constraint $Expr<R1> =:= Expr<Int>$.
-    * Record the constraint $Tag<R2> =:= Tag<String>$.
+    * Record the constraint $Expr\langle R1\rangle =:= Expr\langle Int\rangle$.
+    * Record the constraint $Tag\langle R2\rangle =:= Tag\langle String\rangle$.
 
 #### Special cases
 
@@ -439,6 +437,8 @@ Consequently, if there is a solution for the reduced set of constraints, then th
 For subtyping reconstruction, which provides additional information, we should relax the behavior in the other direction and allow the reduced set of constraints to be weaker, meaning the behavior of the reduce function can be: $R <== C$.
 Consequently, if there is a solution for the original set of constraints, then there is a solution for the reduced set of constraints, but not vice versa.
 
+> romanv: It is impossible to render & in math mode on github. Their lexer is shit. Maybe we should replace all $$ mode with `` mode
+
 > Such behavior means that subtyping reconstruction could add less information than available in the original set of constraints, but it can never add information which was not there.
 > This preserves the type safety property: for a given set of inference constraints `T`, which we want to enhance with subtyping reconstruction information, if $C ==> R$, we have $T & R ==> T & C$.
 
@@ -520,16 +520,16 @@ class Out<out T>
 class In<in T>
 ```
 
-1. If the algorithm produces constraint $T :> Out<Captured(*)>$, then this only provides us information that `T` is not nullable and $Out<T> :> Out<Out<Any?>>$.
-   While if we approximated it, we would get $T :> Out<*>$, which leads to $T :> Out<*> :> Out<Int>$, and this is unsound with respect to the original constraint.
+1. If the algorithm produces constraint $T :> Out\langle Captured(\*)\rangle$, then this only provides us information that `T` is not nullable and $Out\langle T> :> Out\langle Out\langle Any?\rangle\rangle$.
+   While if we approximated it, we would get $T :> Out\langle \*\rangle$, which leads to $T :> Out\langle \*\rangle :> Out\langle Int\rangle$, and this is unsound with respect to the original constraint.
    The reason is that after the approximation we do not end up with the equal type.
-   We have a relation $Out<*> :> Out<Captured(*)>$, between approximated and original type.
-   And we are not able to infer $T :> Out<*>$ from $T :> Out<Captured(*)>$ and $Out<*> :> Out<Captured(*)>$.
+   We have a relation $Out\langle \*\rangle :> Out\langle Captured(\*)\rangle$, between approximated and original type.
+   And we are not able to infer $T :> Out\langle \*\rangle$ from $T :> Out\langle Captured(\*)\rangle$ and $Out\langle \*\rangle :> Out\langle Captured(\*)\rangle$.
 
-2. On the contrary, for $Out<In<Captured(*)>>$ 
-   we are able to approximate the constraint $T :> Out<In<Captured(*)>>$ to $T :> Out<In<*>>$.
-   This is because $Out<In<Captured(*)>> :> Out<In<*>>$.
-   And we could get $T :> Out<In<*>>$ from $T :> Out<In<Captured(*)>>$, $Out<In<Captured(*)>> :> Out<In<*>>$ and transitivity rule. 
+2. On the contrary, for $Out\langle In\langle Captured(\*)\rangle\rangle$ 
+   we are able to approximate the constraint $T :> Out\langle In\langle Captured(\*)\rangle\rangle$ to $T :> Out\langle In\langle \*\rangle\rangle$.
+   This is because $Out\langle In\langle Captured(\*)\rangle\rangle :> Out\langle In\langle \*\rangle\rangle$.
+   And we could get $T :> Out\langle In\langle \*\rangle\rangle$ from $T :> Out\langle In\langle Captured(\*)\rangle\rangle$, $Out\langle In\langle Captured(\*)\rangle\rangle :> Out\langle In\langle \*\rangle\rangle$ and transitivity rule. 
 
 > romanv: "we should be generalizing this type" generalizing this type != relaxes the constraint
 
@@ -539,7 +539,7 @@ Meaning we can do it only if it relaxes the constraint.
 > romanv: start with "In addition"?
 
 We are loosing some type information with this relaxation, specifically we lose the equalities between the captured types (and their corresponding existential variables).
-For example, if we have a constraints $V = Inv<Captured(*)>$ and $U = Inv<Captured(*)>$, where the captured types are equal, we should be able to call a function `fun <T> foo(i1: Inv<T>, i2: Inv<T>)` with the values of types `V` and `U`.
+For example, if we have a constraints $V = Inv\langle Captured(\*)\rangle$ and $U = Inv\langle Captured(\*)\rangle$, where the captured types are equal, we should be able to call a function `fun <T> foo(i1: Inv<T>, i2: Inv<T>)` with the values of types `V` and `U`.
 But after approximation this information will be lost.
 
 > For example, such code with captured type equalities happens when you are working with data structures that are controlling some invariants on the type level, for example, AVL tree with type-level control of the balance factor.
