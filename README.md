@@ -236,8 +236,11 @@ fun generateConstraintsFor(supertypes: List<Type>) {
 }
 ```
 
-> TODO: this needs to be carefully re-read to check I didn't break smth when rewriting the algorithm.
-> romanv: Do we need to mix Stage numbering and linking like "After that,"
+The algorithm is based on two fundamental observations.
+The first one is the existence of any object's real type that was assigned to the object during its creation.
+The second is that this real type is a subtype of the inferred or ascribed type in the scope (type of the argument, type of the local variable, etc) and the type upon what it was checked (type of the classifier on the right side of the \kinline{is} or \kinline{as} expression, etc).
+The last observation can sometimes be violated by the use of unsafe/unchecked casts causing class cast exceptions.
+We do not consider such scenarios, leaving them, as usual, the responsibility of the user.
 
 The input for the algorithm is a list of known supertypes for some value, which come from the compile-time information in the code (type declarations, type checks, etc.).
 
@@ -245,19 +248,19 @@ Stage 1: If these supertypes contain intersection types, we consider each of the
 
 > romanv: for "type projections" it is not clearly stated that they represent real types.
 
-Stage 2: __Next,__ in line 3, we create so called "type projections" of these __supertype__.
-A type projection of a __supertype__ is this type's classifier type parameterized with fresh type arguments (if any).
+Stage 2: Next, in line 3, we create so called "type projections" of the real type on the classifiers of these supertypes.
+A type projection of a real type is this supertype's classifier type parameterized with fresh type arguments (if any).
 It can be viewed as a placeholder for the actual runtime type of the value.
 
-Stage 3: __Then,__ in line 6, we record the constraint that these type projections are subtypes of their corresponding supertypes,
+Stage 3: Then, in line 6, we record the constraint that these type projections are subtypes of their corresponding supertypes,
 as the actual runtime type of the value will be a subtype of its compile-time checked supertype.
 
-Stage 4: __After that,__ in line 10, we iterate over all lowest common classifiers (line 14) for each possible pair of the type projections.
+Stage 4: After that, in line 10, we iterate over all lowest common classifiers (line 14) for each possible pair of the type projections.
 The lowest common classifiers are determined with respect to the inheritance relation.
 Then, in line 14, we upcast both projections on all of those classifiers. 
 Upcasting is the process of "lifting" the subtype to its supertype along the inheritance hierarchy together with the substitution of the type parameters.
 
-Stage 5: __Finally,__ we generate strict equalities between these upcasted projections, 
+Stage 5: Finally, we generate strict equalities between these upcasted projections, 
 as they represent supertypes of the same type (real type of the considered value) w.r.t. the same classifier.
 This is justified by the following paragraph of the Kotlin specification.
 
@@ -437,10 +440,8 @@ Consequently, if there is a solution for the reduced set of constraints, then th
 For subtyping reconstruction, which provides additional information, we should relax the behavior in the other direction and allow the reduced set of constraints to be weaker, meaning the behavior of the reduce function can be: $R <== C$.
 Consequently, if there is a solution for the original set of constraints, then there is a solution for the reduced set of constraints, but not vice versa.
 
-> romanv: It is impossible to render & in math mode on github. Their lexer is shit. Maybe we should replace all $$ mode with `` mode
-
 > Such behavior means that subtyping reconstruction could add less information than available in the original set of constraints, but it can never add information which was not there.
-> This preserves the type safety property: for a given set of inference constraints `T`, which we want to enhance with subtyping reconstruction information, if $C ==> R$, we have $T & R ==> T & C$.
+> This preserves the type safety property: for a given set of inference constraints `T`, which we want to enhance with subtyping reconstruction information, if $C ==> R$, we have $T\ \\&\ R ==> T\ \\&\ C$.
 
 To implement this, we have to adopt the existing resolution algorithm to this new relaxed strategy.
 
