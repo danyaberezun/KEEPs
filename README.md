@@ -545,10 +545,12 @@ But after approximation this information will be lost.
 
 > For example, such code with captured type equalities happens when you are working with data structures that are controlling some invariants on the type level, for example, AVL tree with type-level control of the balance factor.
 
-The possible solutions to this loss of precision are
+The possible solutions to this problem are
 
 1. Erase all bounds containing captured types that could not be soundly approximated.
-   This option will significantly limit the applicability of the subtyping reconstruction.
+   The type system will be sound in this case.
+   But, this option will significantly limit the applicability of the subtyping reconstruction. 
+   For example, the last example above will not work, meaning `foo(V, U)` is ill-typed.
 
    > TODO: Why do we think that? Do we have any backing for saying "this will break GADT inference"?
    > romanv: Didn't get the question.
@@ -573,12 +575,19 @@ Here we explain the steps needed to achieve that.
 ### New types of control-flow graph statements
 
 We introduce a new type of statements handled by the data-flow analysis, called *type intersection*.
-Type intersection statement with types `T1 & T2 & ...`says that, in a specific node of a control-flow graph, a value definitely has a set of types `T1 & T2 & ...`, and these types should be used for subtyping reconstruction.
+Type intersection statement with types `T1 & T2 & ...`says that, in a specific node of a control-flow graph, a value definitely has a set of types `T1 & T2 & ...`, and these types should be used for subtyping reconstruction. 
 
 > TODO: Why not just do subtyping reconstruction for all values that have intersection types somewhere? Why do we need special statements for this
 > romanv: Because sometimes we do not have value (f.e. if we check a returned value of the function call using `is`).
 > And we have to track where intersection type appears and propagate it until the end.
 > Not sure what is the difference between introduction of statements and running a subtyping reconstruction for all values that have intersection types.
+> 
+> Additionally, statement includes information that intersection type is inhabited, while just intersection may not. 
+> 
+> In real application we may not use statements explicitly (inline them), but theoretically we have it.
+> 
+> Maybe a word statement is the key to misunderstanding. Judgment? Fact?
+> By statement we mean statement as fact that stored in the actual implementation of the Control-Flow framework, not as a statement in the code. 
 
 After type intersection statements are handled by the subtyping reconstruction, we get additional type constraints, which are also stored and used by the data-flow analysis as *subtyping reconstruction result* statements.
 
