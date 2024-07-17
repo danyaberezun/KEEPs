@@ -1031,3 +1031,408 @@ We would get a constraints $S_{real} <: Any$ which is not enough to infer $S_{re
 * http://pauillac.inria.fr/~fpottier/slides/slides-popl04.pdf
 * https://www.cs.tufts.edu/~nr/cs257/archive/tim-sheard/lang-of-future.pdf
 * https://infoscience.epfl.ch/record/98468/files/MatchingObjectsWithPatterns-TR.pdf
+
+# Return type inference
+
+## Problem statement
+
+The issue with return type inference is backed by the fact 
+that we lose the local context where the value was created before we merge values from different branches.
+Additionally, we do not have this context in the moment this value assigned to the variable.
+More precisely, for this code:
+
+```Kotlin
+fun <T> foo(b: Box<T>) {
+    val x = when (b) {
+        is BoxString -> "string"
+        is BoxInt -> 1
+    }
+    TODO()
+}
+```
+
+The data flow is following (I am not sure):
+
+```
+assign
+whenExpression
+whenScrutineeExpression
+whenBranchCondition
+whenBranchExpression
+todoExpression
+```
+
+While it is obvious that the order of the execution is:
+
+```
+whenScrutineeExpression
+whenBranchCondition
+whenBranchExpression
+whenExpression
+assign
+todoExpression
+```
+
+> When expression before assign is important as we may not have an assignment, but use a return type of the whenExpression, which have to be inferred. For example, if the function argument is whenExpression itself
+
+In this order we do not lose bounds information, 
+we merge it at the same moment as we merge a return value types. 
+Actually, we would like to transfer a return type through the data flow graph, 
+along with the inferred bounds allowing us to merge them simultaneously.
+It does not mean they have to be stored in the DFG instead of the FIR node itself, 
+but it has to be propagated through the DFG and assigned into FIR after the DFG passed this node.
+
+> It does not have to be implemented this way, 
+> we may just (temporarily) store the context of the return type along with it in the FIR, 
+> but we have to track if the order, etc. aligned with the theoretical model.
+
+So actually with this new order, 
+we have a place where we have to merge the return type and the bounds simultaneously.
+
+## Algorithm
+
+We have to define three new operations:
+
+1. $lub(T_1, T_2, C_1, C_2)$, where
+   * $T_1$ and $T_2$ are types to merge
+   * $C_1$ and $C_2$ are constraints from the corresponding branches
+
+   The (desired) semantics of this operation is the following:
+
+   $\forall T. (C_1 |- T :> T_1) \\& (C_2 |- T :> T_2) <=> |- T :> lub(T_1, T_2, C_1, C_2)$
+
+   > Emptiness of the context on the right side is not required.
+   > Actually, we may say that we have a context $C_1 \\& C_2$ there.
+   > But to construct this context, we need this operation itself.
+   > For optimization of the resulting type we may use any context, which is a subset of $C_1 \\& C_2$.
+   > So we may firstly construct such context using bounds that are presented in both contexts.
+   > It will prevent us from duplicating types from the same context bounds on every consecutive merge.
+   > But for simplicity, we assume that we later shrink the type using the constructed context.
+
+   The operation is used to merge the return type itself and type parameters in covariant positions.
+2. $glb(T_1, T_2, C_1, C_2)$, where
+   * $T_1$ and $T_2$ are types to merge
+   * $C_1$ and $C_2$ are constraints from the corresponding branches
+
+   The (desired) semantics of this operation is the following:
+
+   $\forall T. (C_1 |- T <: T_1) \\& (C_2 |- T <: T_2) <=> |- T <: lub(T_1, T_2, C_1, C_2)$
+
+   The operation is used to merge type parameters in contravariant positions.
+3. $eq(T_1, T_2, C_1, C_2)$, where
+   * $T_1$ and $T_2$ are types to merge
+   * $C_1$ and $C_2$ are constraints from the corresponding branches
+   
+   The output of this operation is a set of types. 
+
+   The (desired) semantics of this operation is the following:
+
+   $\forall T. (C_1 |- T = T_1) \\& (C_2 |- T = T_2) <=> |- T in lub(T_1, T_2, C_1, C_2)$
+   
+   The operation is used to merge type parameters in invariant positions.
+   
+   > You also feel some noise of problem there? :)
+   > Actually it is the same as for GADT in functional languages
+
+### $lub$
+
+1. Find all supertype constructors of $T_i$ in $C_i$ that are the lowest upper bounds of their intersection in empty (or optimistic) context.
+   Where constructor is not only a classifier but also a (generic) variable.
+2. For classifiers from the previous step, find the lowest upper bounds for their type parameters
+   (recursively, using function according to variance).
+   Combine the results for invariant parameters by intersecting them.
+   > And intersections of all their subsets?
+3. Intersect the results.
+4. Add union of $T_i$ in the result if its approximation is not already a supertype of the result.
+5. \* Shrink the result using the context $C_1 \\& C_2$.
+
+### $glb$
+
+1. Find all subtype constructors of $T_i$ in $C_i$ that are the greatest lower bounds of their union in empty (or optimistic) context.
+   Where constructor is not only a classifier but also a (generic) variable.
+   > Actually, we do not try to iterate over subtyping hierarchy, we use only subtyping introduced by context.
+2. For classifiers from the previous step, find the greatest lower bounds for their type parameters 
+   (recursively, using function according to variance).
+   Combine the results for invariant parameters by uniting them.
+3. Unite the results.
+4. Add intersection of $T_i$ in the result if it is not already a subtype of the result.
+5. \* Shrink the result using the context $C_1 \\& C_2$.
+
+> The issue there is that if we have more than one result, we have a union type.
+> As we do not have unions even internally, we would like to approximate it.
+> And sound approximation is to select one of the components from union.
+> Which one...
+> * If that was added at stage 4, then everything was useless.
+>   But if it was added, we have to do it for backward compatibility.
+> * If there is no such component, then we have to select one of those added at stage 3.
+>   Which one...
+
+### $eq$
+
+1. Find all constructions equal to $T_i$ in $C_i$ and intersect these sets.
+   \* Shrink the result using the optimistic context.
+2. Return the resulting intersection set.
+
+### Flow union
+
+1. For each type variable $V$.
+2. $T_i$ is an intersection of upper bounds not presented for $V$ in any $C_j$, where $i != j$
+   (Common bounds go into optimistic context)
+3. Upper bound for V in merged context is $lub(T_i, C_i)$, plus common upper bounds.
+4. Lower bound symmetrically.
+
+### Return type union
+
+1. $lub$ with real $\\& C_i$ as an optimistic context.
+
+### Examples
+
+#### Good
+
+##### Covariance
+
+```Kotlin
+fun <T> foo(v: Out<T>) {
+    val v = when (v) {
+        is OutString -> "string"
+        is OutInt -> 1
+    }
+    // ...
+}
+```
+
+$T_1 = String$
+
+$C_1 = T :> String$
+
+$T_2 = Int$
+
+$C_2 = T :> Int$
+
+
+`T :> glb(String, Int, ...) = Nothing`
+
+`RT = lub(String, Int, ...)`
+
+1. `{T, Comparable, Serializable}`
+2. Consider only `Comparable`.
+   `Comparable<glb(Int, String, ...)>` -> `Comparable<Nothing>`
+3. `T & Serializable & Comparable<Nothing>`
+4. `Int | String -> Serializable & Comparable<Nothing>` => do not add
+
+`RT = T & Serializable & Comparable<Nothing>`
+
+
+##### Contravariance
+
+```Kotlin
+fun <T> foo(v: In<T>) {
+    val v = when (v) {
+        is InString -> { inp: String -> v.in(ivp) }
+        is InInt -> { inp: Int -> v.in(ivp) }
+    }
+    // ...
+}
+```
+
+$T_1 = String$
+
+$C_1 = T <: String$
+
+$T_2 = Int$
+
+$C_2 = T <: Int$
+
+`T <: lub(String, Int, ...) = Serializable & Comparable<Nothing>`
+
+`RT = Function<glb(String, Int, ...), Unit>`
+
+1. `{T}`
+2. Skip
+3. `T`
+4. `String & Int = Nothing` (ONLY because one of them is final)
+
+`RT = Function<T, Unit>`
+
+If they are not final, we have `RT = Function<T | String & Int, Unit>`.
+And we have to approximate it to useless `Function<String & Int, Unit>`.
+
+##### Invariance
+
+```Kotlin
+fun <T> foo(v: Inv<T>) {
+    val v = when (v) {
+        is InvString -> "string"
+        is InvInt -> 1
+    }
+    // ...
+}
+```
+
+$T_1 = String$
+
+$C_1 = T = String$
+
+$T_2 = Int$
+
+$C_2 = T = Int$
+
+`T :> glb(String, Int, ...)`
+
+1. `{T}`
+2. Skip
+3. `T`
+4. `String & Int = Nothing` (ONLY because one of them is final)
+
+`T :> glb(String, Int, ...) = T`
+
+`T <: lub(String, Int, ...)`
+
+1. `{T, Comparable, Serializable}`
+2. Consider only `Comparable`.
+   `Comparable<glb(Int, String, ...)>` -> `Comparable<T>`
+3. `T & Serializable & Comparable<T>`
+4. `Int | String -> Serializable & Comparable<Nothing>` => do not add
+
+`T <: Serializable & Comparable<T>`
+
+`RT = lub(String, Int, ...) = T & Serializable & Comparable<T>`
+
+#### Bad
+
+##### Covariance
+
+```Kotlin
+fun <T, V> foo(t: Out<T>, v: Out<V>) {
+    val v = when {
+        t is OutString && v is OutString -> "string"
+        t is OutInt && v is OutInt -> 1
+        else -> error("")
+    }
+    // ...
+}
+```
+
+$T_1 = String$
+
+$C_1 = T :> String, V :> String$
+
+$T_2 = Int$
+
+$C_2 = T :> Int, T :> Int$
+
+`T :> glb(String, Int, ...) = Nothing`
+
+`V :> glb(String, Int, ...) = Nothing`
+
+`RT = lub(String, Int, ...)`
+
+1. `{T, V, Comparable, Serializable}`
+2. Consider only `Comparable`.
+   `Comparable<glb(Int, String, ...)>` -> `Comparable<Nothing>`
+3. `T & V & Serializable & Comparable<Nothing>`
+4. `Int | String -> Serializable & Comparable<Nothing>` => do not add
+
+`RT = T & V & Serializable & Comparable<Nothing>`
+
+##### Contravariance
+
+```Kotlin
+fun <T, V> foo(t: In<T>, v: In<V>) {
+    val v = when {
+        t is InString && v is InString -> "string"
+        t is InInt && v is InInt -> 1
+        else -> error("")
+    }
+    // ...
+}
+```
+
+$T_1 = String$
+
+$C_1 = T <: String, V <: String$
+
+$T_2 = Int$
+
+$C_2 = T <: Int, V <: Int$
+
+`T <: lub(String, Int, ...) = Serializable & Comparable<Nothing>`
+
+`V <: lub(String, Int, ...) = Serializable & Comparable<Nothing>`
+
+`RT = Function<glb(String, Int, ...), Unit>`
+
+1. `{T, V}`
+2. Skip
+3. `T | V`
+4. `String & Int = Nothing` (ONLY because one of them is final)
+
+`RT = Function<T | V, Unit> ?->? Function<T, Unit> & Function<V, Unit>`
+
+##### Invariance
+
+```Kotlin
+fun <T, V> foo(t: Inv<T>, v: Inv<V>) {
+    val v = when {
+        t is InvString && v is InvString -> "string"
+        t is InvInt && v is InvInt -> 1
+        else -> error("")
+    }
+    // ...
+}
+```
+
+$T_1 = String$
+
+$C_1 = T = String, V = String, T = V$
+
+$T_2 = Int$
+
+$C_2 = T = Int, V = Int, T = V$
+
+`T = V` passed automatically.
+
+`T :> glb(String, Int, ...)`
+
+1. `{T, V}`
+2. Skip
+3. `T | V -> ???`
+4. `String & Int = Nothing` (ONLY because one of them is final)
+
+Nothing new.
+
+`T <: lub(String, Int, ...)`
+
+1. `{T, V, Comparable, Serializable}`
+2. Consider only `Comparable`.
+   `Comparable<glb(Int, String, ...)>` -> `Comparable<T | V>` ?->? `Comparable<T> & Comparable<V>`
+   > Here we can use a passed knowledge that `T = V`. 
+3. `T & V & Serializable & Comparable<T | V>`
+4. `Int | String -> Serializable & Comparable<Nothing>` => do not add
+
+`T <: Serializable & Comparable<T | V>`
+
+`RT = lub(String, Int, ...) = T & V`
+
+##### Invariance (hard)
+
+```Kotlin
+fun <T, V> foo(t: Inv<T>, v: Inv<V>) {
+    val v = when {
+        t is InvString && v is InvString -> Inv("string")
+        t is InvInt && v is InvInt -> Inv(1)
+        else -> null
+    }
+    // ...
+}
+```
+
+`RT = Inv<T & V> & Inv<T> & Inv<V>`...
+
+or
+
+`RT = Inv<T> & Inv<V>`
+
+Which is still not good (polynomial blowup?)
+
+In theory, we can use information that `v != null => T = V` and somehow simplify it to the previous example
