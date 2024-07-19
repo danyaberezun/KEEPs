@@ -1339,10 +1339,9 @@ $C_2 = T :> Int, T :> Int$
 
 ```Kotlin
 fun <T, V> foo(t: In<T>, v: In<V>) {
-    val v = when {
-        t is InString && v is InString -> "string"
-        t is InInt && v is InInt -> 1
-        else -> error("")
+    val v = when (v) {
+        is InString -> { inp: String -> v.in(ivp) }
+        is InInt -> { inp: Int -> v.in(ivp) }
     }
     // ...
 }
