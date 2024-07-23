@@ -1038,7 +1038,7 @@ We would get a constraints $S_{real} <: Any$ which is not enough to infer $S_{re
 
 The issue with return type inference is backed by the fact 
 that we lose the local context where the value was created before we merge values from different branches.
-Additionally, we do not have this context in the moment this value assigned to the variable.
+Additionally, we do not have this context at the moment this value assigned to the variable.
 More precisely, for this code:
 
 ```Kotlin
@@ -1051,7 +1051,7 @@ fun <T> foo(b: Box<T>) {
 }
 ```
 
-The data flow is following (I am not sure):
+The data flow is following:
 
 ```
 assign
@@ -1062,7 +1062,7 @@ whenBranchExpression
 todoExpression
 ```
 
-While it is obvious that the order of the execution is:
+While the order of the execution is following:
 
 ```
 whenScrutineeExpression
@@ -1091,7 +1091,7 @@ we have a place where we have to merge the return type and the bounds simultaneo
 
 ## Algorithm
 
-We have to define three new operations:
+We have to define three new basic operations:
 
 1. $lub(T_1, T_2, C_1, C_2)$, where
    * $T_1$ and $T_2$ are types to merge
@@ -1123,73 +1123,102 @@ We have to define three new operations:
    * $T_1$ and $T_2$ are types to merge
    * $C_1$ and $C_2$ are constraints from the corresponding branches
    
-   The output of this operation is a set of types. 
+   The output of this operation is a __set__ of types. 
 
    The (desired) semantics of this operation is the following:
 
    $\forall T. (C_1 |- T = T_1) \\& (C_2 |- T = T_2) <=> |- T in lub(T_1, T_2, C_1, C_2)$
    
    The operation is used to merge type parameters in invariant positions.
-   
-   > You also feel some noise of problem there? :)
-   > Actually it is the same as for GADT in functional languages
 
-### $lub$
+### Basic operations
+
+#### $lub$
 
 1. Find all supertype constructors of $T_i$ in $C_i$ that are the lowest upper bounds of their intersection in empty (or optimistic) context.
    Where constructor is not only a classifier but also a (generic) variable.
-2. For classifiers from the previous step, find the lowest upper bounds for their type parameters
-   (recursively, using function according to variance).
-   Combine the results for invariant parameters by intersecting them.
-   > And intersections of all their subsets?
+2. For classifiers from the previous step, find the appropriate bounds for their type parameters
+   (recursively, using function according to accumulated variance).
 3. Intersect the results.
 4. Add union of $T_i$ in the result if its approximation is not already a supertype of the result.
 5. \* Shrink the result using the context $C_1 \\& C_2$.
 
-### $glb$
+#### $glb$
 
 1. Find all subtype constructors of $T_i$ in $C_i$ that are the greatest lower bounds of their union in empty (or optimistic) context.
    Where constructor is not only a classifier but also a (generic) variable.
    > Actually, we do not try to iterate over subtyping hierarchy, we use only subtyping introduced by context.
-2. For classifiers from the previous step, find the greatest lower bounds for their type parameters 
-   (recursively, using function according to variance).
-   Combine the results for invariant parameters by uniting them.
+2. For classifiers from the previous step, find the appropriate bounds for their type parameters
+   (recursively, using function according to accumulated variance).
 3. Unite the results.
 4. Add intersection of $T_i$ in the result if it is not already a subtype of the result.
 5. \* Shrink the result using the context $C_1 \\& C_2$.
 
-> The issue there is that if we have more than one result, we have a union type.
-> As we do not have unions even internally, we would like to approximate it.
-> And sound approximation is to select one of the components from union.
-> Which one...
-> * If that was added at stage 4, then everything was useless.
->   But if it was added, we have to do it for backward compatibility.
-> * If there is no such component, then we have to select one of those added at stage 3.
->   Which one...
-
-### $eq$
+#### $eq$
 
 1. Find all constructions equal to $T_i$ in $C_i$ and intersect these sets.
-   \* Shrink the result using the optimistic context.
-2. Return the resulting intersection set.
+2. For classifiers from the previous step, find the appropriate bounds for their type parameters
+   (recursively, using function according to accumulated variance (once invariant => forever invariant)).
+3. \* Shrink the result using the optimistic context.
 
-### Flow union
+#### Handling of unions and non-singleton sets for invariant positions
+
+##### Unions
+
+During $glb$ operation we may end up with a union that we have to approximate to its subtype.
+The most precise sound approximation is to select one of the components from the union.
+But it is too imprecise and not obvious which one to select.
+Observations:
+
+1. Which one to choose:
+   1. If the component from the stage 4, was added into union, we have to choose it.
+      Firstly, for backward compatibility.
+      Secondly, as it is most user-friendly.
+   2. If there is no such component, but it is not equal to `Nothing`, we have to choose component of the union that is a supertype of it.
+      It is the most precise backward compatible approximation.
+   3. If there is no such component, and it is equal to `Nothing` we may choose any component.
+2. Another approach is to transform the type into an equivalent one, with intersection instead of union.
+   For example, $(T | V) -> Unit = (T) -> Unit \\& (V) -> Unit$
+   Problem with this approach is that it make the inferred type less user-friendly and may result in a very big intersection (f.e. $(T | V, T | V, T | V) -> Unit$).
+   So if it is even applicable, we are able to use it in some cases, when there is only one such parameter.
+3. Should we choose?
+   We may default to the most user-friendly option ($\\& T_i$) in case of any ambiguity.
+   And add inspection to the IDEA "GADT inference failed, you should specify type explicitly". 
+   And show options from unions in the hint.
+   Actually, it should not be a lot of such cases in the real code.
+
+##### Invariant position with non-singleton sets
+
+Approach from the point 2 from previous section is also applicable here.
+With the same disadvantages.
+
+And the best solution to prevent explosion of the intersection is to default to `*`.
+With the same inspection in IDEA.
+   
+### Operations
+
+#### Flow union
 
 1. For each type variable $V$.
-2. $T_i$ is an intersection of upper bounds not presented for $V$ in any $C_j$, where $i != j$
-   (Common bounds go into optimistic context)
-3. Upper bound for V in merged context is $lub(T_i, C_i)$, plus common upper bounds.
-4. Lower bound symmetrically.
+2. Upper bound.
+   1. $T_i$ is an intersection of upper bounds not presented for $V$ in any $C_j$, where $i != j$
+      (Common bounds goes directly into optimistic context)
+   2. Upper bound for V in merged context is $lub(T_i, C_i)$, plus common upper bounds.
+3. Lower bound.
+   1. $T_i$ is a union of lower bounds not presented for $V$ in any $C_j$, where $i != j$
+        (Common bounds goes directly into optimistic context)
+   2. Lower bound for V in merged context is $glb(T_i, C_i)$, plus common lower bounds.
+4. Equality.
+   For equality, we have to intersect all equivalency classes in all contexts.
 
-### Return type union
+#### Return type union
 
-1. $lub$ with real $\\& C_i$ as an optimistic context.
+1. Unite the flows to get a precise next context for the return type. 
+2. $lub$ of the return types from all branches with precise next context instead of empty or optimistic.
 
 ### Examples
 
-#### Good
-
-##### Covariance
+#### Covariance with single generic
 
 ```Kotlin
 fun <T> foo(v: Out<T>) {
@@ -1222,8 +1251,7 @@ $C_2 = T :> Int$
 
 `RT = T & Serializable & Comparable<Nothing>`
 
-
-##### Contravariance
+#### Contravariance with single generic
 
 ```Kotlin
 fun <T> foo(v: In<T>) {
@@ -1257,7 +1285,7 @@ $C_2 = T <: Int$
 If they are not final, we have `RT = Function<T | String & Int, Unit>`.
 And we have to approximate it to useless `Function<String & Int, Unit>`.
 
-##### Invariance
+#### Invariance with single generic
 
 ```Kotlin
 fun <T> foo(v: Inv<T>) {
@@ -1298,9 +1326,7 @@ $C_2 = T = Int$
 
 `RT = lub(String, Int, ...) = T & Serializable & Comparable<T>`
 
-#### Bad
-
-##### Covariance
+#### Covariance with multiple generics
 
 ```Kotlin
 fun <T, V> foo(t: Out<T>, v: Out<V>) {
@@ -1335,7 +1361,7 @@ $C_2 = T :> Int, T :> Int$
 
 `RT = T & V & Serializable & Comparable<Nothing>`
 
-##### Contravariance
+#### Contravariance with multiple generics
 
 ```Kotlin
 fun <T, V> foo(t: In<T>, v: In<V>) {
@@ -1369,7 +1395,7 @@ $C_2 = T <: Int, V <: Int$
 
 `RT = Function<T | V, Unit> ?->? Function<T, Unit> & Function<V, Unit>`
 
-##### Invariance
+#### Invariance with multiple generics 1
 
 ```Kotlin
 fun <T, V> foo(t: Inv<T>, v: Inv<V>) {
@@ -1414,7 +1440,7 @@ Nothing new.
 
 `RT = lub(String, Int, ...) = T & V`
 
-##### Invariance (hard)
+#### Invariance with multiple generics 2
 
 ```Kotlin
 fun <T, V> foo(t: Inv<T>, v: Inv<V>) {
@@ -1427,7 +1453,7 @@ fun <T, V> foo(t: Inv<T>, v: Inv<V>) {
 }
 ```
 
-`RT = Inv<T & V> & Inv<T> & Inv<V>`...
+`RT = Inv<T & V> & Inv<T> & Inv<V>`... (wrong! `T & V` impossible)
 
 or
 
@@ -1436,3 +1462,19 @@ or
 Which is still not good (polynomial blowup?)
 
 In theory, we can use information that `v != null => T = V` and somehow simplify it to the previous example
+
+We should not try to rely on the fact that `v != null => T = V` solves it in every case.
+Counterexample:
+
+```Kotlin
+fun <T, V> foo(t: Inv<T>, v: Inv<V>) {
+    val v = if (Random.nextBoolean()) { 
+        when {
+            t is InvString && v is InvString -> Inv("string")
+            t is InvInt && v is InvInt -> Inv(1)
+            else -> null
+        }
+    } else null
+    // ...
+}
+```
