@@ -1230,60 +1230,56 @@ fun <T> foo(v: Out<T>) {
 }
 ```
 
-$T_1 = String$
+Input:
+- $T_1 = String; C_1 = \\{T :> String\\}$
+- $T_2 = Int; C_2 = \\{T :> Int\\}$
 
-$C_1 = T :> String$
+Calculations:
+- $glb(String, Int, C_1, C_2) = Nothing$
+- $lub(String, Int, C_1, C_2) = T \\& Serializable \\& Comparable<Nothing>$
+  1. $\\{T, Comparable, Serializable\\}$
+  2. $Comparable<glb(Int, String, C_1, C_2)> -> Comparable<Nothing>$
+  3. $T \\& Serializable \\& Comparable<Nothing>$
+  4. $Int | String -> Serializable \\& Comparable<Nothing>$ => do not add
 
-$T_2 = Int$
-
-$C_2 = T :> Int$
-
-
-`T :> glb(String, Int, ...) = Nothing`
-
-`RT = lub(String, Int, ...)`
-
-1. `{T, Comparable, Serializable}`
-2. Consider only `Comparable`.
-   `Comparable<glb(Int, String, ...)>` -> `Comparable<Nothing>`
-3. `T & Serializable & Comparable<Nothing>`
-4. `Int | String -> Serializable & Comparable<Nothing>` => do not add
-
-`RT = T & Serializable & Comparable<Nothing>`
+Output:
+- $T :> glb(String, Int, C_1, C_2) = Nothing$
+- $RT = lub(String, Int, C_1, C_2) = T \\& Serializable \\& Comparable<Nothing>$
 
 #### Contravariance with single generic
 
 ```Kotlin
 fun <T> foo(v: In<T>) {
     val v = when (v) {
-        is InString -> { inp: String -> v.in(ivp) }
-        is InInt -> { inp: Int -> v.in(ivp) }
+        is InString -> { arg: String -> v.in(arg) }
+        is InInt -> { arg: Int -> v.in(arg) }
     }
     // ...
 }
 ```
 
-$T_1 = String$
+Input:
+- $T_1 = String; C_1 = \\{T <: String\\}$
+- $T_2 = Int; C_2 = \\{T <: Int\\}$
 
-$C_1 = T <: String$
+Calculations:
+- $glb(String, Int, C_1, C_2) = T$
+  1. $\\{T\\}$
+  2. Skip
+  3. $T$
+  4. $String \\& Int = Nothing$ => do not add
+- $lub(String, Int, C_1, C_2) = Serializable \\& Comparable<T>$
 
-$T_2 = Int$
+Output:
+- $T <: lub(String, Int, C_1, C_2) = Serializable \\& Comparable<T>$
+- $RT = Function<glb(String, Int, ...), Unit> = Function<T, Unit>$
 
-$C_2 = T <: Int$
+> Here we forgot that $T <: String => T = String$.
+> See next example for such case.
 
-`T <: lub(String, Int, ...) = Serializable & Comparable<Nothing>`
-
-`RT = Function<glb(String, Int, ...), Unit>`
-
-1. `{T}`
-2. Skip
-3. `T`
-4. `String & Int = Nothing` (ONLY because one of them is final)
-
-`RT = Function<T, Unit>`
-
-If they are not final, we have `RT = Function<T | String & Int, Unit>`.
-And we have to approximate it to useless `Function<String & Int, Unit>`.
+> If none of $String$, $Int$ is final, then:
+> - $glb(String, Int, C_1, C_2) = Int \\& String$
+> - $RT = Function<Int \\& String, Unit>$
 
 #### Invariance with single generic
 
@@ -1297,34 +1293,26 @@ fun <T> foo(v: Inv<T>) {
 }
 ```
 
-$T_1 = String$
+Input:
+- $T_1 = String; C_1 = \\{T = String\\}$
+- $T_2 = Int; C_2 = \\{T = Int\\}$
 
-$C_1 = T = String$
+Calculations:
+- $glb(String, Int, C_1, C_2) = T$
+  1. $\\{T\\}$
+  2. Skip
+  3. $T$
+  4. $String \\& Int = Nothing$ => do not add
+- $lub(String, Int, C_1, C_2) = T \\& Serializable \\& Comparable<T>$
+  1. $\\{T, Comparable, Serializable\\}$
+  2. $Comparable<glb(Int, String, C_1, C_2)> -> Comparable<T>$
+  3. $T \\& Serializable \\& Comparable<T>$
+  4. $Int | String -> Serializable \\& Comparable<Nothing>$ => do not add
 
-$T_2 = Int$
-
-$C_2 = T = Int$
-
-`T :> glb(String, Int, ...)`
-
-1. `{T}`
-2. Skip
-3. `T`
-4. `String & Int = Nothing` (ONLY because one of them is final)
-
-`T :> glb(String, Int, ...) = T`
-
-`T <: lub(String, Int, ...)`
-
-1. `{T, Comparable, Serializable}`
-2. Consider only `Comparable`.
-   `Comparable<glb(Int, String, ...)>` -> `Comparable<T>`
-3. `T & Serializable & Comparable<T>`
-4. `Int | String -> Serializable & Comparable<Nothing>` => do not add
-
-`T <: Serializable & Comparable<T>`
-
-`RT = lub(String, Int, ...) = T & Serializable & Comparable<T>`
+Output:
+- $T <: lub(String, Int, C_1, C_2) = Serializable \\& Comparable<T>$
+- $T :> glb(String, Int, C_1, C_2) = T$
+- $RT = lub(String, Int, C_1, C_2) = T \\& Serializable \\& Comparable<T> = T$
 
 #### Covariance with multiple generics
 
@@ -1339,27 +1327,22 @@ fun <T, V> foo(t: Out<T>, v: Out<V>) {
 }
 ```
 
-$T_1 = String$
+Input:
+- $T_1 = String; C_1 = \\{T :> String, V :> String\\}$
+- $T_2 = Int; C_2 = \\{T :> Int, V :> Int\\}$
 
-$C_1 = T :> String, V :> String$
+Calculations:
+- $glb(String, Int, C_1, C_2) = Nothing$
+- $lub(String, Int, C_1, C_2) = T \\& V \\& Serializable \\& Comparable<Nothing>$
+  1. $\\{T, V, Comparable, Serializable\\}$
+  2. $Comparable<glb(Int, String, C_1, C_2)> -> Comparable<Nothing>$
+  3. $T \\& V \\& Serializable \\& Comparable<Nothing>$
+  4. $Int | String -> Serializable \\& Comparable<Nothing>$ => do not add
 
-$T_2 = Int$
-
-$C_2 = T :> Int, T :> Int$
-
-`T :> glb(String, Int, ...) = Nothing`
-
-`V :> glb(String, Int, ...) = Nothing`
-
-`RT = lub(String, Int, ...)`
-
-1. `{T, V, Comparable, Serializable}`
-2. Consider only `Comparable`.
-   `Comparable<glb(Int, String, ...)>` -> `Comparable<Nothing>`
-3. `T & V & Serializable & Comparable<Nothing>`
-4. `Int | String -> Serializable & Comparable<Nothing>` => do not add
-
-`RT = T & V & Serializable & Comparable<Nothing>`
+Output:
+- $T :> glb(String, Int, C_1, C_2) = Nothing$
+- $V :> glb(String, Int, C_1, C_2) = Nothing$
+- $RT = lub(String, Int, C_1, C_2) = T \\& V \\& Serializable \\& Comparable<Nothing>$
 
 #### Contravariance with multiple generics
 
@@ -1374,71 +1357,62 @@ fun <T, V> foo(t: In<T>, v: In<V>) {
 }
 ```
 
-$T_1 = String$
+Input:
+- $T_1 = String; C_1 = \\{T <: String, V <: String\\}$
+- $T_2 = Int; C_2 = \\{T <: Int, V <: Int\\}$
 
-$C_1 = T <: String, V <: String$
+Calculations:
+- $glb(String, Int, C_1, C_2) = T | V$
+  1. $\\{T, V\\}$
+  2. Skip
+  3. $T | V$
+  4. $String \\& Int = Nothing$ => do not add
+- $lub(String, Int, C_1, C_2) = Serializable \\& Comparable<T | V>$
+  1. $\\{T, V, Comparable, Serializable\\}$
+  2. $Comparable<glb(Int, String, C_1, C_2)> -> Comparable<T | V>$
+  3. $T \\& V \\& Serializable \\& Comparable<T | V>$
+  4. $Int | String -> Serializable \\& Comparable<Nothing>$ => do not add
 
-$T_2 = Int$
-
-$C_2 = T <: Int, V <: Int$
-
-`T <: lub(String, Int, ...) = Serializable & Comparable<Nothing>`
-
-`V <: lub(String, Int, ...) = Serializable & Comparable<Nothing>`
-
-`RT = Function<glb(String, Int, ...), Unit>`
-
-1. `{T, V}`
-2. Skip
-3. `T | V`
-4. `String & Int = Nothing` (ONLY because one of them is final)
-
-`RT = Function<T | V, Unit> ?->? Function<T, Unit> & Function<V, Unit>`
+Output:
+- $T <: lub(String, Int, C_1, C_2) = Serializable \\& Comparable<T | V>$
+- $V <: lub(String, Int, C_1, C_2) = Serializable \\& Comparable<T | V>$
+- $RT = Function<glb(String, Int, ...), Unit> = Function<T | V, Unit>$
+  - $Function<T | V, Unit> -> Function<T, Unit> \\& Function<V, Unit>$
+  - or $Function<T | V, Unit> -> Function<*, Unit>$ + IDE warning
 
 #### Invariance with multiple generics 1
 
 ```Kotlin
 fun <T, V> foo(t: Inv<T>, v: Inv<V>) {
     val v = when {
-        t is InvString && v is InvString -> "string"
-        t is InvInt && v is InvInt -> 1
+        t is InvString && v is InvString -> Inv("string")
+        t is InvInt && v is InvInt -> Inv(1)
         else -> error("")
     }
     // ...
 }
 ```
 
-$T_1 = String$
+Input:
+- $T_1 = String; C_1 = \\{T = String, V = String\\}$
+- $T_2 = Int; C_2 = \\{T = Int, V = Int\\}$
 
-$C_1 = T = String, V = String, T = V$
+Calculations:
+- $glb(String, Int, C_1, C_2) = T | V$
+  1. $\\{T, V\\}$
+  2. Skip
+  3. $T | V$
+  4. $String \\& Int = Nothing$ => do not add
+- $lub(String, Int, C_1, C_2) = T \\& V \\& Serializable \\& Comparable<T | V>$
 
-$T_2 = Int$
+> As T = V in the resulting context we may simplify $T | V$ to $T$ or $V$ (denoted as $T =:= V$).
 
-$C_2 = T = Int, V = Int, T = V$
-
-`T = V` passed automatically.
-
-`T :> glb(String, Int, ...)`
-
-1. `{T, V}`
-2. Skip
-3. `T | V -> ???`
-4. `String & Int = Nothing` (ONLY because one of them is final)
-
-Nothing new.
-
-`T <: lub(String, Int, ...)`
-
-1. `{T, V, Comparable, Serializable}`
-2. Consider only `Comparable`.
-   `Comparable<glb(Int, String, ...)>` -> `Comparable<T | V>` ?->? `Comparable<T> & Comparable<V>`
-   > Here we can use a passed knowledge that `T = V`. 
-3. `T & V & Serializable & Comparable<T | V>`
-4. `Int | String -> Serializable & Comparable<Nothing>` => do not add
-
-`T <: Serializable & Comparable<T | V>`
-
-`RT = lub(String, Int, ...) = T & V`
+Output:
+- $T <: lub(String, Int, C_1, C_2) = T \\& V \\& Serializable \\& Comparable<T =:= V>$
+- $T :> glb(String, Int, C_1, C_2) = T | V = V$
+- $V <: lub(String, Int, C_1, C_2) = T \\& V \\& Serializable \\& Comparable<T =:= V>$
+- $V :> glb(String, Int, C_1, C_2) = T | V = T$
+- $RT = Inv<eq(String, Int, C_1, C_2)> = Inv<T =:= V>$
 
 #### Invariance with multiple generics 2
 
@@ -1453,28 +1427,8 @@ fun <T, V> foo(t: Inv<T>, v: Inv<V>) {
 }
 ```
 
-`RT = Inv<T & V> & Inv<T> & Inv<V>`... (wrong! `T & V` impossible)
-
-or
-
-`RT = Inv<T> & Inv<V>`
-
-Which is still not good (polynomial blowup?)
-
-In theory, we can use information that `v != null => T = V` and somehow simplify it to the previous example
-
-We should not try to rely on the fact that `v != null => T = V` solves it in every case.
-Counterexample:
-
-```Kotlin
-fun <T, V> foo(t: Inv<T>, v: Inv<V>) {
-    val v = if (Random.nextBoolean()) { 
-        when {
-            t is InvString && v is InvString -> Inv("string")
-            t is InvInt && v is InvInt -> Inv(1)
-            else -> null
-        }
-    } else null
-    // ...
-}
-```
+> Here the difference is that we have `else -> null` instead of `else -> error("")`.
+> Consequently, we have to merge we are not allowed to reduce $T | V$ into $T =:= V$.
+> But if value exists, then we know that $T = V$.
+> Our hypothesis is that we may always reduce such union based on the fact that `v != null => T = V`.
+> We just have to teach the data flow graph to extract such statements.
