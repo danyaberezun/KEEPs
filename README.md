@@ -1189,11 +1189,13 @@ Observations:
 
 ##### Invariant position with non-singleton sets
 
-Approach from the point 2 from previous section is also applicable here.
+Approach from point 2 from a previous section is also applicable here.
 With the same disadvantages.
 
 And the best solution to prevent explosion of the intersection is to default to `*`.
 With the same inspection in IDEA.
+
+> Actually, not. Our hypothesis is shown at the end of the document. 
    
 ### Operations
 
