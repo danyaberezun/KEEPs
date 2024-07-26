@@ -1099,7 +1099,7 @@ We have to define three new basic operations:
 
    The (desired) semantics of this operation is the following:
 
-   $\forall T. (C_1 |- T :> T_1) \\& (C_2 |- T :> T_2) <=> |- T :> lub(T_1, T_2, C_1, C_2)$
+   $\forall T. (C_1 \vdash T :> T_1) \\& (C_2 \vdash T :> T_2) <=> \vdash T :> lub(T_1, T_2, C_1, C_2)$
 
    > Emptiness of the context on the right side is not required.
    > Actually, we may say that we have a context $C_1 \\& C_2$ there.
@@ -1116,7 +1116,7 @@ We have to define three new basic operations:
 
    The (desired) semantics of this operation is the following:
 
-   $\forall T. (C_1 |- T <: T_1) \\& (C_2 |- T <: T_2) <=> |- T <: lub(T_1, T_2, C_1, C_2)$
+   $\forall T. (C_1 \vdash T <: T_1) \\& (C_2 \vdash T <: T_2) <=> \vdash T <: lub(T_1, T_2, C_1, C_2)$
 
    The operation is used to merge type parameters in contravariant positions.
 3. $eq(T_1, T_2, C_1, C_2)$, where
@@ -1127,7 +1127,7 @@ We have to define three new basic operations:
 
    The (desired) semantics of this operation is the following:
 
-   $\forall T. (C_1 |- T = T_1) \\& (C_2 |- T = T_2) <=> |- T in lub(T_1, T_2, C_1, C_2)$
+   $\forall T. (C_1 \vdash T = T_1) \\& (C_2 \vdash T = T_2) <=> \vdash T \in lub(T_1, T_2, C_1, C_2)$
    
    The operation is used to merge type parameters in invariant positions.
 
@@ -1178,8 +1178,8 @@ Observations:
       It is the most precise backward compatible approximation.
    3. If there is no such component, and it is equal to `Nothing` we may choose any component.
 2. Another approach is to transform the type into an equivalent one, with intersection instead of union.
-   For example, $(T | V) -> Unit = (T) -> Unit \\& (V) -> Unit$
-   Problem with this approach is that it make the inferred type less user-friendly and may result in a very big intersection (f.e. $(T | V, T | V, T | V) -> Unit$).
+   For example, $(T | V) \rightarrow Unit = (T) \rightarrow Unit \\& (V) \rightarrow Unit$
+   Problem with this approach is that it make the inferred type less user-friendly and may result in a very big intersection (f.e. $(T | V, T | V, T | V) \rightarrow Unit$).
    So if it is even applicable, we are able to use it in some cases, when there is only one such parameter.
 3. Should we choose?
    We may default to the most user-friendly option ($\\& T_i$) in case of any ambiguity.
@@ -1236,15 +1236,15 @@ Input:
 
 Calculations:
 - $glb(String, Int, C_1, C_2) = Nothing$
-- $lub(String, Int, C_1, C_2) = T \\& Serializable \\& Comparable<Nothing>$
+- $lub(String, Int, C_1, C_2) = T \\& Serializable \\& Comparable\langle Nothing\rangle$
   1. $\\{T, Comparable, Serializable\\}$
-  2. $Comparable<glb(Int, String, C_1, C_2)> -> Comparable<Nothing>$
-  3. $T \\& Serializable \\& Comparable<Nothing>$
-  4. $Int | String -> Serializable \\& Comparable<Nothing>$ => do not add
+  2. $Comparable\langle glb(Int, String, C_1, C_2)\rangle \rightarrow Comparable\langle Nothing\rangle$
+  3. $T \\& Serializable \\& Comparable\langle Nothing\rangle$
+  4. $Int | String \rightarrow Serializable \\& Comparable\langle Nothing\rangle$ => do not add
 
 Output:
 - $T :> glb(String, Int, C_1, C_2) = Nothing$
-- $RT = lub(String, Int, C_1, C_2) = T \\& Serializable \\& Comparable<Nothing>$
+- $RT = lub(String, Int, C_1, C_2) = T \\& Serializable \\& Comparable\langle Nothing\rangle$
 
 #### Contravariance with single generic
 
@@ -1268,10 +1268,10 @@ Calculations:
   2. Skip
   3. $T$
   4. $String \\& Int = Nothing$ => do not add
-- $lub(String, Int, C_1, C_2) = Serializable \\& Comparable<T>$
+- $lub(String, Int, C_1, C_2) = Serializable \\& Comparable\langle T\rangle$
 
 Output:
-- $T <: lub(String, Int, C_1, C_2) = Serializable \\& Comparable<T>$
+- $T <: lub(String, Int, C_1, C_2) = Serializable \\& Comparable\langle T\rangle$
 - $RT = Function<glb(String, Int, ...), Unit> = Function<T, Unit>$
 
 > Here we forgot that $T <: String => T = String$.
@@ -1303,16 +1303,16 @@ Calculations:
   2. Skip
   3. $T$
   4. $String \\& Int = Nothing$ => do not add
-- $lub(String, Int, C_1, C_2) = T \\& Serializable \\& Comparable<T>$
+- $lub(String, Int, C_1, C_2) = T \\& Serializable \\& Comparable\langle T\rangle$
   1. $\\{T, Comparable, Serializable\\}$
-  2. $Comparable<glb(Int, String, C_1, C_2)> -> Comparable<T>$
-  3. $T \\& Serializable \\& Comparable<T>$
-  4. $Int | String -> Serializable \\& Comparable<Nothing>$ => do not add
+  2. $Comparable\langle glb(Int, String, C_1, C_2)\rangle \rightarrow Comparable\langle T\rangle$
+  3. $T \\& Serializable \\& Comparable\langle T\rangle$
+  4. $Int | String \rightarrow Serializable \\& Comparable\langle Nothing\rangle$ => do not add
 
 Output:
-- $T <: lub(String, Int, C_1, C_2) = Serializable \\& Comparable<T>$
+- $T <: lub(String, Int, C_1, C_2) = Serializable \\& Comparable\langle T\rangle$
 - $T :> glb(String, Int, C_1, C_2) = T$
-- $RT = lub(String, Int, C_1, C_2) = T \\& Serializable \\& Comparable<T> = T$
+- $RT = lub(String, Int, C_1, C_2) = T \\& Serializable \\& Comparable\langle T\rangle = T$
 
 #### Covariance with multiple generics
 
@@ -1333,16 +1333,16 @@ Input:
 
 Calculations:
 - $glb(String, Int, C_1, C_2) = Nothing$
-- $lub(String, Int, C_1, C_2) = T \\& V \\& Serializable \\& Comparable<Nothing>$
+- $lub(String, Int, C_1, C_2) = T \\& V \\& Serializable \\& Comparable\langle Nothing\rangle$
   1. $\\{T, V, Comparable, Serializable\\}$
-  2. $Comparable<glb(Int, String, C_1, C_2)> -> Comparable<Nothing>$
-  3. $T \\& V \\& Serializable \\& Comparable<Nothing>$
-  4. $Int | String -> Serializable \\& Comparable<Nothing>$ => do not add
+  2. $Comparable\langle glb(Int, String, C_1, C_2)\rangle \rightarrow Comparable\langle Nothing\rangle$
+  3. $T \\& V \\& Serializable \\& Comparable\langle Nothing\rangle$
+  4. $Int | String \rightarrow Serializable \\& Comparable\langle Nothing\rangle$ => do not add
 
 Output:
 - $T :> glb(String, Int, C_1, C_2) = Nothing$
 - $V :> glb(String, Int, C_1, C_2) = Nothing$
-- $RT = lub(String, Int, C_1, C_2) = T \\& V \\& Serializable \\& Comparable<Nothing>$
+- $RT = lub(String, Int, C_1, C_2) = T \\& V \\& Serializable \\& Comparable\langle Nothing\rangle$
 
 #### Contravariance with multiple generics
 
@@ -1367,18 +1367,18 @@ Calculations:
   2. Skip
   3. $T | V$
   4. $String \\& Int = Nothing$ => do not add
-- $lub(String, Int, C_1, C_2) = Serializable \\& Comparable<T | V>$
+- $lub(String, Int, C_1, C_2) = Serializable \\& Comparable\langle T | V\rangle$
   1. $\\{T, V, Comparable, Serializable\\}$
-  2. $Comparable<glb(Int, String, C_1, C_2)> -> Comparable<T | V>$
-  3. $T \\& V \\& Serializable \\& Comparable<T | V>$
-  4. $Int | String -> Serializable \\& Comparable<Nothing>$ => do not add
+  2. $Comparable\langle glb(Int, String, C_1, C_2)\rangle \rightarrow Comparable\langle T | V\rangle$
+  3. $T \\& V \\& Serializable \\& Comparable\langle T | V\rangle$
+  4. $Int | String \rightarrow Serializable \\& Comparable\langle Nothing\rangle$ => do not add
 
 Output:
-- $T <: lub(String, Int, C_1, C_2) = Serializable \\& Comparable<T | V>$
-- $V <: lub(String, Int, C_1, C_2) = Serializable \\& Comparable<T | V>$
+- $T <: lub(String, Int, C_1, C_2) = Serializable \\& Comparable\langle T | V\rangle$
+- $V <: lub(String, Int, C_1, C_2) = Serializable \\& Comparable\langle T | V\rangle$
 - $RT = Function<glb(String, Int, ...), Unit> = Function<T | V, Unit>$
-  - $Function<T | V, Unit> -> Function<T, Unit> \\& Function<V, Unit>$
-  - or $Function<T | V, Unit> -> Function<*, Unit>$ + IDE warning
+  - $Function<T | V, Unit> \rightarrow Function<T, Unit> \\& Function<V, Unit>$
+  - or $Function<T | V, Unit> \rightarrow Function<*, Unit>$ + IDE warning
 
 #### Invariance with multiple generics 1
 
@@ -1403,14 +1403,14 @@ Calculations:
   2. Skip
   3. $T | V$
   4. $String \\& Int = Nothing$ => do not add
-- $lub(String, Int, C_1, C_2) = T \\& V \\& Serializable \\& Comparable<T | V>$
+- $lub(String, Int, C_1, C_2) = T \\& V \\& Serializable \\& Comparable\langle T | V\rangle$
 
 > As T = V in the resulting context we may simplify $T | V$ to $T$ or $V$ (denoted as $T =:= V$).
 
 Output:
-- $T <: lub(String, Int, C_1, C_2) = T \\& V \\& Serializable \\& Comparable<T =:= V>$
+- $T <: lub(String, Int, C_1, C_2) = T \\& V \\& Serializable \\& Comparable\langle T =:= V\rangle$
 - $T :> glb(String, Int, C_1, C_2) = T | V = V$
-- $V <: lub(String, Int, C_1, C_2) = T \\& V \\& Serializable \\& Comparable<T =:= V>$
+- $V <: lub(String, Int, C_1, C_2) = T \\& V \\& Serializable \\& Comparable\langle T =:= V\rangle$
 - $V :> glb(String, Int, C_1, C_2) = T | V = T$
 - $RT = Inv<eq(String, Int, C_1, C_2)> = Inv<T =:= V>$
 
