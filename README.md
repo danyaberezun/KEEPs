@@ -23,11 +23,10 @@ class BoxInt(i: Int) : GadtBox<Int>(i)
 class AggregateBox<T>(s: List<T>) : GadtBox<List<T>>(s)
 ```
 
-`AdtBox`'s inheritors adds new fields and change behavior, but they remain parameter `T` unchanged and unconstrained.
-This is why it is ADT.
-On the contrary, `GadtBox`'s inheritors introduced new constraints on `T`, which makes it GADT.
+`AdtBox` inheritors adds new fields and change behavior, but they keep type parameter `T` unchanged and unconstrained.
+On the contrary, `GadtBox` inheritors introduce new constraints on `T`, making it specific for a specific inheritor, which makes `GadtBox` a GADT and not just an ADT.
 
-GADTs enable the storage of additional type information (invariants) in ADTs, along with the ability of using this information when doing pattern matching.
+GADTs enable the storage of additional type information (type constraints or invariants) in ADTs, along with the ability of using this information when doing pattern matching.
 
 One of the classic well-known GADT use-cases is ensuring type safety when defining DSLs.
 For example, in Scala an arithmetic expression can be made type-safe by construction, e.g. it is impossible to construct an expression that uses binary operator on non-numerical values and tuples.
@@ -43,7 +42,7 @@ In the example constructor `LitInt` ensures that the data being created is an `E
 Thus, in this case our *data type invariants* are: any integer literal is actually an integer, and any binary addition has integer sub-expressions.
 This information is stored in the type itself, meaning there is no way to construct an ill-formed expression (for example, a binary addition of two tuples).
 
-As ADTs comes with pattern matching, generalized ADTs come with generalized pattern matching which uses the type information stored in GADTs to guarantee code type safety.
+As ADTs come with pattern matching, generalized ADTs come with generalized pattern matching which uses the type information stored in GADTs to guarantee code type safety.
 In other words, as GADTs represent *types correct by construction at compile-time*, generalized pattern matching *guarantees absence of type errors during run-time*.
 
 Continuing on the previous example, the following function that evaluates arithmetic expressions is well-typed.
@@ -82,14 +81,14 @@ Let's review the first example in more detail.
 
     private val caller: Caller<M> = if (oldCaller is CallerImpl.Method.BoundStatic) {
         //                              From this ^ check we know that Caller<M> & BoundStatic
-        //                              And able to infer that M :> ReflectMethod
+        //                              and are able to infer that M :> ReflectMethod
         val receiverType = (descriptor.extensionReceiverParameter ?: descriptor.dispatchReceiverParameter)?.type
         if (receiverType != null && receiverType.needsMfvcFlattening()) {
             val unboxMethods = getMfvcUnboxMethods(receiverType.asSimpleType())!!
             val boundReceiverComponents = unboxMethods.map { it.invoke(oldCaller.boundReceiver) }.toTypedArray()
             @Suppress("UNCHECKED_CAST")
             CallerImpl.Method.BoundStaticMultiFieldValueClass(oldCaller.member, boundReceiverComponents) as Caller<M>
-            //                                                                                 This cast ^ is safe,
+            // This cast ^ is always safe,
             // because M :> ReflectMethod => Caller<M> :> Caller<ReflectMethod> :> BoundStaticMultiFieldValueClass
         } else {
             oldCaller
@@ -99,7 +98,7 @@ Let's review the first example in more detail.
     }
 ```
 
-> For more advanced examples, see [More advanced GADT-like use-cases section](...) in Addendum.
+> For more advanced examples, see [More advanced GADT-like use-cases section](TODO: add link) in Addendum.
 
 <!---
 #### Real-world GADT-like use-cases in Kotlin
@@ -108,7 +107,7 @@ There are several papers that discuss the use-cases of GADTs[links].
 The main mentioned advantages are:
 
 * Well-typed LR Parser. 
-  GADT allows eliminating some runtime checks which improve performance over non-GADTs implementations.
+  GADT allows eliminating some run-time checks which improve performance over non-GADTs implementations.
 * Type-safe AVL Tree.
   GADT with existential types allows implementing AVL Tree with type-level control of a balance factor.
 * Typed Printf/Scanf Formats.
@@ -154,7 +153,7 @@ As we have established, GADTs are associated with generalized pattern matching: 
 It is how the GADTs already works in many functional languages, but for object-oriented languages with inheritance-based subtyping it is not as easy and actually not enough to achive only generalized pattern matching.
 
 > The details of why it is so could be found in [the GADT formalization for C#](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/gadtoop.pdf) and Scala 3 implementation.
-> Additionally, you could see the [Bounds inference algorithm](...) section of this KEEP.
+> Additionally, you could see the [Bounds inference algorithm](TODO: add link) section of this KEEP.
 
 In fact, in general you have access to additional type information when there is a value in the program that has two related types.
 For functional languages, this happens, for example, with GADT and one of its specific variant type in pattern matching; for object-oriented languages, this can happen for two arbitrary types, when one is inherited from (is a subtype of) another.
@@ -238,30 +237,27 @@ fun generateConstraintsFor(supertypes: List<Type>) {
 
 The algorithm is based on two fundamental observations.
 The first one is the existence of any object's real type that was assigned to the object during its creation.
-The second is that this real type is a subtype of the inferred or ascribed type in the scope (type of the argument, type of the local variable, etc) and the type upon what it was checked (type of the classifier on the right side of the \kinline{is} or \kinline{as} expression, etc).
-The last observation can sometimes be violated by the use of unsafe/unchecked casts causing class cast exceptions.
-We do not consider such scenarios, leaving them, as usual, the responsibility of the user.
+The second is that this real type is a subtype of the inferred or ascribed type in the scope (type of the argument, type of the local variable, etc.) and the checked type (type of the classifier on the right side of the \kinline{is} or \kinline{as} expression, etc.).
+
+> The second observation can sometimes be violated by the use of unsafe / unchecked casts.
+> We do not consider such scenarios, leaving them, as usual, the responsibility of the user.
 
 The input for the algorithm is a list of known supertypes for some value, which come from the compile-time information in the code (type declarations, type checks, etc.).
 
 Stage 1: If these supertypes contain intersection types, we consider each of the intersection type components as a separate supertype.
 
-> romanv: for "type projections" it is not clearly stated that they represent real types.
-
 Stage 2: Next, in line 3, we create so called "type projections" of the real type on the classifiers of these supertypes.
-A type projection of a real type is this supertype's classifier type parameterized with fresh type arguments (if any).
-It can be viewed as a placeholder for the actual runtime type of the value.
+A type projection of a real type is also a real type, which is this supertype's classifier type parameterized with fresh type arguments (if any).
+It can be viewed as a placeholder for the actual run-time type of the value.
 
-Stage 3: Then, in line 6, we record the constraint that these type projections are subtypes of their corresponding supertypes,
-as the actual runtime type of the value will be a subtype of its compile-time checked supertype.
+Stage 3: Then, in line 6, we record the constraint that these type projections are subtypes of their corresponding supertypes, as the actual run-time type of the value will be a subtype of its compile-time checked supertype.
 
 Stage 4: After that, in line 10, we iterate over all lowest common classifiers (line 14) for each possible pair of the type projections.
 The lowest common classifiers are determined with respect to the inheritance relation.
 Then, in line 14, we upcast both projections on all of those classifiers. 
 Upcasting is the process of "lifting" the subtype to its supertype along the inheritance hierarchy together with the substitution of the type parameters.
 
-Stage 5: Finally, we generate strict equalities between these upcasted projections, 
-as they represent supertypes of the same type (real type of the considered value) w.r.t. the same classifier.
+Stage 5: Finally, we generate strict equalities between these upcasted projections, as they represent supertypes of the same type (real type of the analyzed value) w.r.t. the same classifier.
 This is justified by the following paragraph of the Kotlin specification.
 
 > The transitive closure S∗(T) of the set of type supertypes S(T : \(S_1\), . . . , \(S_m\)) = {\(S_1\), . . . , \(S_m\)} ∪ S(\(S_1\)) ∪ . . . ∪ S(\(S_m\))
@@ -355,20 +351,27 @@ Let's follow the algorithm step by step.
     ```Kotlin
     fun <T> bar(v: T): T { 
         val l = foo(v)
-        // l : List<T>..MutableList<T>
+        // l : MutableList<T!>..List<T?>?
         if (l is SerializableList) {
-            // Type intersection statement for lower bound: [{MutableList<T> & SerializableListMarker}]
-            // Subtyping reconstruction results for lower bound: [T = Serializable]
+            // Type intersection statement for lower bound: [{MutableList<T!> & SerializableList}]
+            // Subtyping reconstruction results for lower bound: [T! =:= Serializable]
             // But this is unsound f.e. see `baz`
     
-            // Type intersection statement for upper bound: [{List<T> & SerializableListMarker}]
+            // Type intersection statement for upper bound: [{List<T?>? & SerializableList}]
             // Subtyping reconstruction results for upper bound: [T :> Serializable]
+            // This result is always sound
     
             l.add(v)
     
-            // Now l : MutableList<T>
-            // And we are able to infer [T = Serializable]
-            // Even if it is unsound in case of `baz`'s call, this case will throw an exception in the `add` call.
+            // After we have used the value as MutableList,
+            // we may state that l : MutableList<T!>
+            // And then we could infer [T! =:= Serializable]
+            // If it is unsound, as in the case of `baz`,
+            // it will throw a run-time exception in the `add` call
+
+            // marat.akhin: before we were saying that subtype reconstruction
+            // should avoid run-time type errors, here we suddenly say
+            // it is OK to have them? or do we want to explain another idea here?
         }
         ...
     }
@@ -443,7 +446,7 @@ Consequently, if there is a solution for the original set of constraints, then t
 > Such behavior means that subtyping reconstruction could add less information than available in the original set of constraints, but it can never add information which was not there.
 > This preserves the type safety property: for a given set of inference constraints `T`, which we want to enhance with subtyping reconstruction information, if $C ==> R$, we have $T\ \\&\ R ==> T\ \\&\ C$.
 
-To implement this, we have to adopt the existing resolution algorithm to this new relaxed strategy.
+To implement this, we have to adapt the existing resolution algorithm to this new relaxed strategy.
 
 #### Examples of constraint resolution
 
@@ -454,7 +457,7 @@ For example, say we are trying to reduce the constraint $S <: T$, where `T` is a
 For the regular inference, the result of the reduction algorithm may be $S <: LB(T)$, where $LB(T)$ is the lower bound of `T`.
 This constraint guarantees that the original constraint is always satisfied.
 
-For the subtyping reconstruction inference, the result of the reduction may be $S <: UB(T)$, where $UB(T)$ is the upper bound of `T`.
+For the subtyping reconstruction inference, the result of the reduction algorithm may be $S <: UB(T)$, where $UB(T)$ is the upper bound of `T`.
 This constraint is guaranteed to be satisfied by the original constraint.
 
 ##### Resolution with intersection types
@@ -477,17 +480,18 @@ More precisely:
 
 ##### Resolution with nullable types
 
-As was discussed earlier, subtyping reconstruction based on the information that intersection type is inhabited.
-For nullable types inhabitation is an obvious fact, as `null` is always a valid value for any nullable type.
-The same works if we have a type intersection and all types are nullable.
-We do not able to perform any inference in this case.
+As we discussed earlier, subtyping reconstruction is based on the assumption that the intersection type is inhabited by a run-time value.
+For nullable types, however, this assumption is trivially satisfiable, as `null` is always a valid value for any nullable type.
+The same holds for an intersection type when all its compoments are nullable.
 
-An example of such a case is the following code:
+This means that, for such trivially satisfiable cases, we cannot perform any subtype reconstruction.
+
+An example of such a case and why it would be unsound to do subtyping reconstruction for nullable types, is as follows:
 
 ```Kotlin
 fun <T> foo(b: Box<T>?, t: T): T {
     if (b is BoxInt?) {
-        // [{Box<T> & BoxInt}] => T =:= Int
+        // [{Box<T>? & BoxInt?}] => T =:= Int
         return 1
     }
     ...
@@ -496,12 +500,7 @@ fun <T> foo(b: Box<T>?, t: T): T {
 println(foo(null, "str")) // ClassCastException as we are trying to cast Int to String
 ```
 
-In this case, if we execute a common reconstruction algorithm as for non-nullable types, 
-we will get `T =:= Int`, which is unsound and leads to `ClassCastException`.
-But we should not perform any inference in this case, as actually all of the types in intersection are nullable.
-
-But such intersection statements have to also be stored as once we encounter != null check we will add `Any` in intersection.
-This will disallow null as a value for the type, and we will be able to perform inference.
+It is important to note that we should still track such nullable (intersection)types, as once we encounter a not-null check, the type would become non-nullable, and we would be able to do subtyping reconstruction.
 
 #### Special cases
 
@@ -523,49 +522,34 @@ class In<in T>
 
 1. If the algorithm produces constraint $T :> Out\langle Captured(\*)\rangle$, then this only provides us information that `T` is not nullable and $Out\langle T> :> Out\langle Out\langle Any?\rangle\rangle$.
    While if we approximated it, we would get $T :> Out\langle \*\rangle$, which leads to $T :> Out\langle \*\rangle :> Out\langle Int\rangle$, and this is unsound with respect to the original constraint.
-   The reason is that after the approximation we do not end up with the equal type.
+   The reason for unsoundness is that after the approximation we do not get a relaxed type, we get a strengthened type.
    We have a relation $Out\langle \*\rangle :> Out\langle Captured(\*)\rangle$, between approximated and original type.
-   And we are not able to infer $T :> Out\langle \*\rangle$ from $T :> Out\langle Captured(\*)\rangle$ and $Out\langle \*\rangle :> Out\langle Captured(\*)\rangle$.
+   And we cannot infer $T :> Out\langle \*\rangle$ from $T :> Out\langle Captured(\*)\rangle$ and $Out\langle \*\rangle :> Out\langle Captured(\*)\rangle$.
 
 2. On the contrary, for $Out\langle In\langle Captured(\*)\rangle\rangle$ 
    we are able to approximate the constraint $T :> Out\langle In\langle Captured(\*)\rangle\rangle$ to $T :> Out\langle In\langle \*\rangle\rangle$.
-   This is because $Out\langle In\langle Captured(\*)\rangle\rangle :> Out\langle In\langle \*\rangle\rangle$.
-   And we could get $T :> Out\langle In\langle \*\rangle\rangle$ from $T :> Out\langle In\langle Captured(\*)\rangle\rangle$, $Out\langle In\langle Captured(\*)\rangle\rangle :> Out\langle In\langle \*\rangle\rangle$ and transitivity rule. 
+   This is because $Out\langle In\langle Captured(\*)\rangle\rangle :> Out\langle In\langle \*\rangle\rangle$, i.e. for this constraint approximation properly relaxes the approximated type.
+   And we can infer $T :> Out\langle In\langle \*\rangle\rangle$ from $T :> Out\langle In\langle Captured(\*)\rangle\rangle$, $Out\langle In\langle Captured(\*)\rangle\rangle :> Out\langle In\langle \*\rangle\rangle$ and transitivity rule. 
 
-> romanv: "we should be generalizing this type" generalizing this type != relaxes the constraint
+The core principle is that by approximating a type with captured types during subtyping reconstruction, we should be relaxing the approximated type constraints.
 
-The core principle is that by approximating a type with captured types during subtyping reconstruction, we should be generalizing this type.
-Meaning we can do it only if it relaxes the constraint.
-
-> romanv: start with "In addition"?
-
-We are loosing some type information with this relaxation, specifically we lose the equalities between the captured types (and their corresponding existential variables).
+In addition, we are loosing some type information with this relaxation, specifically we lose the equalities between the captured types (and their corresponding existential variables).
 For example, if we have a constraints $V = Inv\langle Captured(\*)\rangle$ and $U = Inv\langle Captured(\*)\rangle$, where the captured types are equal, we should be able to call a function `fun <T> foo(i1: Inv<T>, i2: Inv<T>)` with the values of types `V` and `U`.
 But after approximation this information will be lost.
 
 > For example, such code with captured type equalities happens when you are working with data structures that are controlling some invariants on the type level, for example, AVL tree with type-level control of the balance factor.
 
-The possible solutions to this problem are
+The possible solutions to this problem are:
 
 1. Erase all bounds containing captured types that could not be soundly approximated.
    The type system will be sound in this case.
-   But, this option will significantly limit the applicability of the subtyping reconstruction. 
-   For example, the last example above will not work, meaning `foo(V, U)` is ill-typed.
-
-   > TODO: Why do we think that? Do we have any backing for saying "this will break GADT inference"?
-   > romanv: Didn't get the question.
-   > It will not break GADT inference in lots of cases.
-   > The additional issue is that it may be unexpected for user when do we erase the bounds and when not.
-   > Do we need an example where it will limit the applicability of the subtyping reconstruction?
+   But, this option will limit the applicability of the subtyping reconstruction. 
+   For example, the last example above will not work, meaning `foo(V, U)` will be ill-typed.
 
 2. Preserve the captured types in the constraints.
    This option will complicate the compiler diagnostics as currently captured types are not really supposed to be printed.
-   On the other hand, this option will increase the applicability of the subtyping reconstruction and allow to improve the handling of captured types in other parts of the type system as well, making them closer in expressiveness to the existential types.
-
-   > TODO: Why do we think that? I have a feeling we need to do some additional work to improve captured types, simply keeping them in the constraints is not enough?
-   > romanv: Didn't get the question.
-   > The problem there is that if it will be stored, it may be useful to print them in error explanations.
-   > Additionally there may be some problems with processing of captured type. AFAK there is some TODO that substitution with captured types breaks their equality or something like that. 
+   On the other hand, this option will increase the applicability of the subtyping reconstruction and allow to improve the handling of captured types in other parts of the type system as well, making them closer in expressiveness to existential types (which they actually are).
+  However, this would require some additional work around how captured types are handled in the type system implementation.
 
 ## Adding subtyping reconstruction to Kotlin flow-sensitive type system
 
@@ -576,18 +560,6 @@ Here we explain the steps needed to achieve that.
 
 We introduce a new type of statements handled by the data-flow analysis, called *type intersection*.
 Type intersection statement with types `T1 & T2 & ...`says that, in a specific node of a control-flow graph, a value definitely has a set of types `T1 & T2 & ...`, and these types should be used for subtyping reconstruction. 
-
-> TODO: Why not just do subtyping reconstruction for all values that have intersection types somewhere? Why do we need special statements for this
-> romanv: Because sometimes we do not have value (f.e. if we check a returned value of the function call using `is`).
-> And we have to track where intersection type appears and propagate it until the end.
-> Not sure what is the difference between introduction of statements and running a subtyping reconstruction for all values that have intersection types.
-> 
-> Additionally, statement includes information that intersection type is inhabited, while just intersection may not. 
-> 
-> In real application we may not use statements explicitly (inline them), but theoretically we have it.
-> 
-> Maybe a word statement is the key to misunderstanding. Judgment? Fact?
-> By statement we mean statement as fact that stored in the actual implementation of the Control-Flow framework, not as a statement in the code. 
 
 After type intersection statements are handled by the subtyping reconstruction, we get additional type constraints, which are also stored and used by the data-flow analysis as *subtyping reconstruction result* statements.
 
@@ -626,6 +598,7 @@ As in different control-flow graph nodes these constraints might be different, i
 
 > TODO: Move some of the general examples of subtyping reconstruction here.
 > romanv: Introduce new ones or move the existing ones or copy the existing ones?
+> marat.akhin: Copy/adapt some existing ones (those which are relatively simple or which show the power of subtype reconstruction nicely) and/or introduce new ones. Here we kinda want to show again / remind the reader about which "real" code subtyping reconstriction allows us to write.
 
 ```kotlin
 fun <T> foo(b: Box<T>): T {
@@ -667,7 +640,7 @@ fun <T> foo(v: Box<T>): T {
 }
 ```
 
-> TODO: consider changing the CFG shape to support this case?
+> We have some ideas of how this problem might be solved, which we will present in an additional KEEP.
 
 ### When there is overload resolution
 
@@ -688,18 +661,16 @@ fun <T> bar(t: T, b: Box<T>) = foo(when (b) {
 })
 ```
 
-Since the actual expected type for the argument of `foo` is unknown, 
-the inferred type for the argument expression is `T` (similarly to the example above), and we resolve the call to `foo(a: Any?)`.
+Since the actual expected type for the argument of `foo` is unknown, the inferred type for the argument expression is `T` (similarly to the example above), and we resolve the call to `foo(a: Any?)`.
 
-In case we do not have any overload resolution involved (aka if we then remove the overloads with `Any?` and `String`), then `foo` will be successfully resolved to `foo(i: Int)`, if we perform subtyping reconstruction.
+In case we do not have any overload resolution involved (aka if we remove the overloads with `Any?` and `String`), then `foo` will be successfully resolved to `foo(i: Int)`, if we perform subtyping reconstruction.
 This happens because in case we only have one overload, we can use it to get the expected type, and with it we are able to infer `Int` for the argument.
 
 ### Can we fix these problems?
 
 We do not have a good universal solution for these problems.
 
-One of the possible solutions could be to preserve the constraint information
-in the inferred types.
+One of the possible solutions could be to preserve the constraint information in the inferred types.
 For the `when` example, when propagating the type `Int`, knowing that we also have `T =:= Int`, we could transform the type into `T & Int`.
 Together with `T & String`, we could then infer `T & Comparable<*>` for the whole `when` expression.
 
@@ -707,7 +678,7 @@ However, for more complex subtyping reconstruction results, this naive solution 
 For example, assume we have `T <: Box<T>`.
 If we transform the type to `T & Box<T>`, we would not be able to type check against expected type `Box<out Box<T>>`.
 
-Fundamentally, this means we may need to add ways to encode recursuve types (aka `µ` type) or some other ways to propagate such complex (e.g., recursive) constraints in the type system.
+Fundamentally, this means we may need to add ways to encode recursuve types (aka `µ` types) or some other ways to propagate such complex (e.g., recursive) constraints in the type system.
 
 We leave the solutions to these problems for possible future work.
 
@@ -782,13 +753,10 @@ If there is no such type, then the constraints are unsatisfiable, meaning the co
 
 A simple, but incomplete approximation of this property is to check whether all of the lowerbounds are subtypes of all of the upperbounds.
 
-> TODO: maybe add an example of how subtyping reconstruction can help with dead code detection?
-> romanv: In my imagination all examples are about exhaustive checks or could be easily transformed to them.
->         So maybe just start next section with "The most common use-case for dead code detection is exhaustive checks."
-
 ### Exhaustiveness checking
 
-Additional information from type constraints could also be used to improve exhaustiveness checks.
+One of the most common use-cases for unreachable code detection is exhaustiveness checks.
+Additional information from type constraints could be used to improve them.
 For example, this code is marked as non-exhaustive.
 
 ```Kotlin
@@ -894,20 +862,20 @@ While this is technically a problem, in general [we do not consider](https://kot
 
 [Prototype implementation](https://github.com/e2e4b6b7/kotlin/pull/2)
 
-Prototype was written in the beginning of the KEEP preparation, 
-so it does not utilize the full power of the algorithm described in this document.
-Limitations:
+Prototype was written in the beginning of the KEEP design, and it does not support the full algorithm described in this document.
 
-* Preserved statements about type intersections, not inferred bounds => Not optimal flow union.
-* A bit different algorithm of constraint generation. More complex and covers fewer cases.
-* Handwritten constraints resolution => Works only in the simplest cases.
-* Improper handling of captured types.
+The current prototype limitations are:
+
+* We save type intersection statements, and not subtyping reconstruction results in the DFA => we have non-optimal data-flow union.
+* We use different algorithm of constraint generation => it is more complex and covers fewer possible cases.
+* We use ad-hoc handwritten constraint resolution algorithm => it works only in the most simple cases.
+* Improper handling of captured types => the subtyping reconstruction results are unsound in some cases.
 
 ### More advanced GADT-like use-cases
 
 [Sources and more examples](https://chrilves.github.io/posts/gadts_by_use_cases/)
 
-#### Runtime subtyping evidence
+#### Run-time subtyping evidence
 
 One simple, but useful in some domains (e.g., type-safe DSLs for data queries), benefit of GADTs is the ability to express, store and use type relations such as $A <: B$ or $A =:= B$ in your code.
 
@@ -1019,8 +987,7 @@ We would get a constraints $S_{real} <: Any$ which is not enough to infer $S_{re
 
 ### Sources
 
-> TODO: what exactly are these Sources about and how they are different, for example, from the references above?
-> romanv: random papers about GADT use-cases and random Scala libraries with GADT usages. Not sure if it is useful 
+> Here we have an assortment of papers about GADT use-cases / Scala libraries with GADT usages, which show the advantages and the feasibility of GADT-style inference.
 
 * https://github.com/higherkindness/mu-scala
 * https://github.com/AdrielC/free-arrow
@@ -1031,6 +998,8 @@ We would get a constraints $S_{real} <: Any$ which is not enough to infer $S_{re
 * http://pauillac.inria.fr/~fpottier/slides/slides-popl04.pdf
 * https://www.cs.tufts.edu/~nr/cs257/archive/tim-sheard/lang-of-future.pdf
 * https://infoscience.epfl.ch/record/98468/files/MatchingObjectsWithPatterns-TR.pdf
+
+TODO: marat.akhin Review the part about Return type inference
 
 # Return type inference
 
