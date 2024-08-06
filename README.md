@@ -98,7 +98,7 @@ Let's review the first example in more detail.
     }
 ```
 
-> For more advanced examples, see [More advanced GADT-like use-cases section](TODO: add link) in Addendum.
+> For more advanced examples, see [More advanced GADT-like use-cases](#more-advanced-gadt-like-use-cases) section in Addendum.
 
 <!---
 #### Real-world GADT-like use-cases in Kotlin
@@ -153,7 +153,7 @@ As we have established, GADTs are associated with generalized pattern matching: 
 It is how the GADTs already works in many functional languages, but for object-oriented languages with inheritance-based subtyping it is not as easy and actually not enough to achive only generalized pattern matching.
 
 > The details of why it is so could be found in [the GADT formalization for C#](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/gadtoop.pdf) and Scala 3 implementation.
-> Additionally, you could see the [Bounds inference algorithm](TODO: add link) section of this KEEP.
+> Additionally, you could see the [Bounds inference algorithm](#bounds-inference-algorithm) section of this KEEP.
 
 In fact, in general you have access to additional type information when there is a value in the program that has two related types.
 For functional languages, this happens, for example, with GADT and one of its specific variant type in pattern matching; for object-oriented languages, this can happen for two arbitrary types, when one is inherited from (is a subtype of) another.
@@ -339,7 +339,7 @@ Let's follow the algorithm step by step.
     ```java
     class SerializableList implements List<Serializable> { ... }
     
-    static List<T> foo(T v) {
+    static <T> List<T> foo(T v) {
         if (v instanceof Serializable) {
              return SerializableList.of(v);
         } else {
@@ -364,14 +364,22 @@ Let's follow the algorithm step by step.
             l.add(v)
     
             // After we have used the value as MutableList,
-            // we may state that l : MutableList<T!>
+            //   we may state that l : MutableList<T!>
             // And then we could infer [T! =:= Serializable]
-            // If it is unsound, as in the case of `baz`,
-            // it will throw a run-time exception in the `add` call
+            // If it is unsound because of unsound `foo` implementation,
+            //   we are not able to guarantee soundness even now.
+            // If it is unsound because the result of `foo` is immutable,
+            //   there is already a problem with the code because of programmer's mistake.
+            // Therefore, either we infer the correct bound or there is already a problem with the code.
 
             // marat.akhin: before we were saying that subtype reconstruction
             // should avoid run-time type errors, here we suddenly say
             // it is OK to have them? or do we want to explain another idea here?
+    
+            // romanv: Slightly fixed the explanation. 
+            // Main idea is that we rely on the fact that everything is sound.
+            // If it is already a problem, it is not an issue that we've added some new ones :)
+            // We just rely on the fact that user knows what he is doing with flexible variable.
         }
         ...
     }
@@ -599,13 +607,49 @@ As in different control-flow graph nodes these constraints might be different, i
 > TODO: Move some of the general examples of subtyping reconstruction here.
 > romanv: Introduce new ones or move the existing ones or copy the existing ones?
 > marat.akhin: Copy/adapt some existing ones (those which are relatively simple or which show the power of subtype reconstruction nicely) and/or introduce new ones. Here we kinda want to show again / remind the reader about which "real" code subtyping reconstriction allows us to write.
+> romanv: I am not able to find some other examples where data-flow is used, mostly because it is a new technique. Any other example will be too synthetic. Is one example and one reference enough?
 
-```kotlin
-fun <T> foo(b: Box<T>): T {
-    if (b !is BoxString) error("Expected BoxString")
-    return "Hello world!"
-}
+Actually, an example that utilizes flow-sensitivity was already shown in 
+[Real-world GADT-like examples in Kotlin](#real-world-gadt-like-examples-in-kotlin) section.
+There we used data flow to propagate $M :> ReflectMethod$ in the body of the `if` expression.
+
+Let's also review the second example from the same section 
+as it demonstrates the power of flow-sensitive subtyping reconstruction better.
+
+```Kotlin
+// interface CandidateFactory<out C>
+// class CallableReferencesCandidateFactory(...) : CandidateFactory<CallableReferenceResolutionCandidate>
+
+// interface ScopeTowerProcessor<out C>
+
+// fun createCallableReferenceProcessor(CallableReferencesCandidateFactory): ScopeTowerProcessor<CallableReferenceResolutionCandidate>
+
+fun <C : ResolutionCandidate> resolveCall(
+        // ...
+        kotlinCall: KotlinCall,
+        candidateFactory: CandidateFactory<C>,
+    ): Collection<C> {
+        @Suppress("UNCHECKED_CAST")
+        val processor = when (kotlinCall.callKind) {
+            KotlinCallKind.CALLABLE_REFERENCE -> {
+                createCallableReferenceProcessor(candidateFactory as CallableReferencesCandidateFactory) as ScopeTowerProcessor<C>
+            }
+            // ...
+        }
+        // ...
+    }
 ```
+
+In this example we are able to eliminate unsafe cast `as ScopeTowerProcessor<C>` using subtyping reconstruction.
+
+Even if it looks like we are in common `when` expression, `KotlinCall` is just an enum class without type parameters.
+Thus, it does not provide any subtyping information.
+
+The actual origin of the reconstruction is cast of `candidateFactory` to `CallableReferencesCandidateFactory`.
+From `[{CandidateFactory<C> & CallableReferencesCandidateFactory}]` we are able to infer `C :> CallableReferenceResolutionCandidate`.
+This information is propagated through the data flow to the next cast, `as ScopeTowerProcessor<C>`, 
+where it is used to check that `ScopeTowerProcessor<C> :> ScopeTowerProcessor<CallableReferenceResolutionCandidate>`.
+
 
 ## When subtyping reconstruction is not enough
 
