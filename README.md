@@ -725,6 +725,35 @@ private fun <E> List<E>.addAnything(element: E) {
 
 This means that adding subtyping reconstruction could also improve bare type inference.
 
+### Builder inference
+
+<!-- Unreviewed section -->
+
+Builder inference is a feature allowing to infer a type of the lambda's parameters based on the code inside the lambda.
+During the typing of lambda, type parameters are replaced with flexible type variables.
+Constraints on them collected during type-checking and their value inferred on the lambda's exit.
+
+This feature conflicts with subtyping reconstruction 
+because later one requires the exact types in intersection during the type-checking, not at the lambda's exit.
+For example, in the following code:
+
+```Kotlin
+interface Inv<T>
+interface InvInt : Inv<Int>
+
+fun <T> foo(v: Inv<T>, t: T) = buildList {
+    add(v) // From this statement, we inferred that the type parameter of the lambda is Inv<T>
+    if (this.first() is InvInt) { 
+        // But at the moment of this check, we have TypeVariable(E) as a type of lhs expression
+        // Consequently, we are not able to infer that T =:= Int inside the `if` branch
+    }
+}
+```
+
+While the same code without builder inference would work correctly.
+This is not a significant issue as builder inference has other issues with the same origin, 
+and all of them could be fixed by explicit type annotations for the lambda parameters.
+
 ### Smart casts
 
 The other existing feature that is affected by subtyping reconstruction is smart casts.
