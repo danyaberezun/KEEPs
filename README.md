@@ -1,9 +1,13 @@
 # Subtyping reconstruction aka GADT-style inference
 
 **Type**: Design proposal
+
 **Authors**: Roman Venediktov, Daniil Berezun
+
 **Contributors**: Marat Akhin, Mikhail Zarechenskiy
+
 **Status**: In discussion
+
 **Related YouTrack issue**: [KT-18510](https://youtrack.jetbrains.com/issue/KT-18510/GADT-style-smart-casts)
 
 ## Introduction
