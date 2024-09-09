@@ -212,7 +212,7 @@ fun generateConstraintsFor(supertypes: List<Type>) {
 
 The algorithm is based on two fundamental observations.
 The first one is the existence of any object's real type that was assigned to the object during its creation.
-The second is that this real type is a subtype of the inferred or ascribed type in the scope (type of the argument, type of the local variable, etc.) and the checked type (type of the classifier on the right side of the \kinline{is} or \kinline{as} expression, etc.).
+The second is that this real type is a subtype of the inferred or ascribed type in the scope (type of the argument, type of the local variable, etc.) and the checked type (type of the classifier on the right side of the `is` or `as` expression, etc.).
 
 > The second observation can sometimes be violated by the use of unsafe / unchecked casts.
 > We do not consider such scenarios, leaving them, as usual, the responsibility of the user.
@@ -437,6 +437,48 @@ This constraint guarantees that the original constraint is always satisfied.
 
 For the subtyping reconstruction inference, the result of the reduction algorithm may be $S <: UB(T)$, where $UB(T)$ is the upper bound of `T`.
 This constraint is guaranteed to be satisfied by the original constraint.
+
+###### Example
+
+Let's consider the following constraints:
+
+* Context: $Out<Serializable> :> T$
+* $T :> Out<V>$
+
+
+1. For function generics, such a system could be achieved with the following code:
+
+    ```Kotlin
+    interface Out<out T>
+    interface In<in T>
+    
+    fun <V> foo(t: In<Out<V>>) {}
+    
+    fun <T : Out<Serializable>> bar() {
+        foo(In<T>())
+    }
+    ```
+    
+    The resolution of constraints for call of `foo` would be:
+    `In<Out<V>> :> In<T> => Out<V> <: T => Out<V> <: LB(T) = Nothing => unresolved`
+
+2. For subtyping reconstruction, such a system could be achieved with the following code:
+
+    ```kotlin
+    interface InInv<T> : In<T>
+    
+    fun <T : Out<Serializable>, V> bar(v: In<Out<V>>, t: InInv<T>) {
+        if (v === t) {
+            // (1)
+        }
+    }
+    ```
+    
+    The resolution of the system at location (1) would be:
+    `[{In<Out<V>> & InInv<T>}] => [Out<V> <: R, T =:= R] => Out<V> <: T => Out<V> <: UB(T) = Out<Serializable> => V <: Serializable`
+
+Because of different approximations in case of regular inference, we are not able to infer bounds for `V` and end up with unresolved constraints.
+However, in case of subtyping reconstruction, we are able to infer that `V <: Serializable`.
 
 ##### Resolution with intersection types
 
