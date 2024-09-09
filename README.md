@@ -1,8 +1,14 @@
 # Subtyping reconstruction aka GADT-style inference
 
+**Type**: Design proposal
+**Authors**: Roman Venediktov, Daniil Berezun
+**Contributors**: Marat Akhin, Mikhail Zarechenskiy
+**Status**: In discussion
+**Related YouTrack issue**: [KT-18510](https://youtrack.jetbrains.com/issue/KT-18510/GADT-style-smart-casts)
+
 ## Introduction
 
-### (Generalized) algebraic data types 
+### (Generalized) algebraic data types
 
 Kotlin currently allows one to declare algebraic data types, or *ADT*, via sealed classes/interfaces and data classes.
 ADTs allows one to form a type by "algebraically" combining other types, where the sum type is represented as a sealed class/interface, and the product type is represented as a data class.
@@ -31,7 +37,7 @@ GADTs enable the storage of additional type information (type constraints or inv
 One of the classic well-known GADT use-cases is ensuring type safety when defining DSLs.
 For example, in Scala an arithmetic expression can be made type-safe by construction, e.g. it is impossible to construct an expression that uses binary operator on non-numerical values and tuples.
 
-```Scala 
+```Scala 3
 enum Expr[A]:
   case LitInt(i: Int) extends Expr[Int]
   case Add(e1: Expr[Int], e2: Expr[Int]) extends Expr[Int]
@@ -47,7 +53,7 @@ In other words, as GADTs represent *types correct by construction at compile-tim
 
 Continuing on the previous example, the following function that evaluates arithmetic expressions is well-typed.
 
-```Scala
+```Scala 3
 def eval[T](e: Expr[T]): T = e match
   case LitInt(i) => i // GADT constraint `T =:= Int` allows the branch
                       // to return an `Int` and not a generic `T`
@@ -229,7 +235,7 @@ Stage 3: Then, in line 6, we record the constraint that these type projections a
 
 Stage 4: After that, in line 10, we iterate over all lowest common classifiers (line 14) for each possible pair of the type projections.
 The lowest common classifiers are determined with respect to the inheritance relation.
-Then, in line 14, we upcast both projections on all of those classifiers. 
+Then, in line 14, we upcast both projections on all of those classifiers.
 Upcasting is the process of "lifting" the subtype to its supertype along the inheritance hierarchy together with the substitution of the type parameters.
 
 Stage 5: Finally, we generate strict equalities between these upcasted projections, as they represent supertypes of the same type (real type of the analyzed value) w.r.t. the same classifier.
@@ -258,7 +264,7 @@ As an input for the algorithm, we have two supertypes of the value `e`: `ExprInt
 
 The flow of the algorithm is shown in the following diagram.
 
-![](images/example_simple.png)
+![](https://raw.githubusercontent.com/danyaberezun/KEEPs/GADT-keep/images/example_simple.png)
 
 The upper part of the diagram shows the final generated constraints.
 Let's follow the algorithm step by step.
@@ -288,9 +294,9 @@ As an input of the algorithm, we have two supertypes of the value `e`: `ExprInt`
 
 The flow of the algorithm is shown in the following diagrams:
 
-![](images/example_several_least_common_classifiers_1.png)
+![](https://raw.githubusercontent.com/danyaberezun/KEEPs/GADT-keep/images/example_several_least_common_classifiers_1.png)
 
-![](images/example_several_least_common_classifiers_2.png)
+![](https://raw.githubusercontent.com/danyaberezun/KEEPs/GADT-keep/images/example_several_least_common_classifiers_2.png)
 
 Let's follow the algorithm step by step.
 
@@ -309,54 +315,54 @@ Let's follow the algorithm step by step.
 * Flexible types. For flexible types, we have to run the algorithm on their upper bound, as it is the type that is guaranteed to be a supertype of the real type.
 
   Let's review the example with flexible types:
-  
-  * Java: 
-    ```java
-    class SerializableList implements List<Serializable> { ... }
-    
-    static <T> List<T> foo(T v) {
-        if (v instanceof Serializable) {
-             return SerializableList.of(v);
-        } else {
-             return SerializableList.empty();
-        }
-    }
-    ```
-  * Kotlin:
-    ```Kotlin
-    fun <T> bar(v: T): T { 
-        val l = foo(v)
-        // l : MutableList<T!>..List<T?>?
-        if (l is SerializableList) {
-            // Type intersection statement for lower bound: [{MutableList<T!> & SerializableList}]
-            // Subtyping reconstruction results for lower bound: [T! =:= Serializable]
-            // But this is unsound, f.e. see `baz`
-    
-            // Type intersection statement for upper bound: [{List<T?>? & SerializableList}]
-            // Subtyping reconstruction results for upper bound: [T :> Serializable]
-            // This result is always sound
-    
-            l.add(v)
-    
-            // After we have used the value as MutableList,
-            //   we may state that l : MutableList<T!>
-            // And then we could infer [T! =:= Serializable]
-            // If it is unsound because of unsound `foo` implementation,
-            //   we are not able to guarantee soundness,
-            //   just as we cannot do that now.
-            // If it is unsound because the result of `foo` is immutable,
-            //   the unsoundness comes from the flexible types.
-            // Therefore, either we soundly infer the correct bound or
-            //   the code is unsound, but the reason for unsoundness
-            //   is not the use of subtyping reconstruction.
-        }
-        ...
-    }
-    
-    fun baz() {
-        bar(object : Any() {})
-    }
-    ```
+
+    * Java:
+      ```java
+      class SerializableList implements List<Serializable> { ... }
+      
+      static <T> List<T> foo(T v) {
+          if (v instanceof Serializable) {
+               return SerializableList.of(v);
+          } else {
+               return SerializableList.empty();
+          }
+      }
+      ```
+    * Kotlin:
+      ```Kotlin
+      fun <T> bar(v: T): T { 
+          val l = foo(v)
+          // l : MutableList<T!>..List<T?>?
+          if (l is SerializableList) {
+              // Type intersection statement for lower bound: [{MutableList<T!> & SerializableList}]
+              // Subtyping reconstruction results for lower bound: [T! =:= Serializable]
+              // But this is unsound, f.e. see `baz`
+      
+              // Type intersection statement for upper bound: [{List<T?>? & SerializableList}]
+              // Subtyping reconstruction results for upper bound: [T :> Serializable]
+              // This result is always sound
+      
+              l.add(v)
+      
+              // After we have used the value as MutableList,
+              //   we may state that l : MutableList<T!>
+              // And then we could infer [T! =:= Serializable]
+              // If it is unsound because of unsound `foo` implementation,
+              //   we are not able to guarantee soundness,
+              //   just as we cannot do that now.
+              // If it is unsound because the result of `foo` is immutable,
+              //   the unsoundness comes from the flexible types.
+              // Therefore, either we soundly infer the correct bound or
+              //   the code is unsound, but the reason for unsoundness
+              //   is not the use of subtyping reconstruction.
+          }
+          ...
+      }
+      
+      fun baz() {
+          bar(object : Any() {})
+      }
+      ```
 
 #### How this compares to the Scala GADT algorithm?
 
@@ -365,7 +371,7 @@ The main difference arises from the mentioned paragraph of the Kotlin specificat
 
 For instance, the following code:
 
-```Scala
+```Scala 3
 trait Func[-A, +B]
 trait Identity[X] extends Func[X, X]
 trait FalseIdentity extends Identity[Int], Func[Any, Int]
@@ -458,9 +464,9 @@ Let's consider the following constraints:
         foo(In<T>())
     }
     ```
-    
-    The resolution of constraints for call of `foo` would be:
-    `In<Out<V>> :> In<T> => Out<V> <: T => Out<V> <: LB(T) = Nothing => unresolved`
+
+   The resolution of constraints for call of `foo` would be:
+   `In<Out<V>> :> In<T> => Out<V> <: T => Out<V> <: LB(T) = Nothing => unresolved`
 
 2. For subtyping reconstruction, such a system could be achieved with the following code:
 
@@ -473,9 +479,9 @@ Let's consider the following constraints:
         }
     }
     ```
-    
-    The resolution of the system at location (1) would be:
-    `[{In<Out<V>> & InInv<T>}] => [Out<V> <: R, T =:= R] => Out<V> <: T => Out<V> <: UB(T) = Out<Serializable> => V <: Serializable`
+
+   The resolution of the system at location (1) would be:
+   `[{In<Out<V>> & InInv<T>}] => [Out<V> <: R, T =:= R] => Out<V> <: T => Out<V> <: UB(T) = Out<Serializable> => V <: Serializable`
 
 Because of different approximations in case of regular inference, we are not able to infer bounds for `V` and end up with unresolved constraints.
 However, in case of subtyping reconstruction, we are able to infer that `V <: Serializable`.
@@ -483,7 +489,7 @@ However, in case of subtyping reconstruction, we are able to infer that `V <: Se
 ##### Resolution with intersection types
 
 If we would like to satisfy a constraint `A :> B & C`, this results in a disjoint constraints `A :> B | A :> C` which is (exponentially) hard to solve.
-As stated [here](https://youtu.be/VV9lPg3fNl8?t=1391), if Scala GADT algorithm encounters such situation, these disjoint constraints are skipped. 
+As stated [here](https://youtu.be/VV9lPg3fNl8?t=1391), if Scala GADT algorithm encounters such situation, these disjoint constraints are skipped.
 In case if all-except-one of the disjoint constraints are immediately unsatisfied, then such a constraint could be processed.
 
 In the current algorithm we propose to adopt the Scala approach and ignore such constraints.
@@ -546,10 +552,10 @@ class In<in T>
    We have a relation $Out\langle \*\rangle :> Out\langle Captured(\*)\rangle$ between approximated and original type.
    And we cannot infer $T :> Out\langle \*\rangle$ from $T :> Out\langle Captured(\*)\rangle$ and $Out\langle \*\rangle :> Out\langle Captured(\*)\rangle$.
 
-2. On the contrary, for $Out\langle In\langle Captured(\*)\rangle\rangle$ 
+2. On the contrary, for $Out\langle In\langle Captured(\*)\rangle\rangle$
    we are able to approximate the constraint $T :> Out\langle In\langle Captured(\*)\rangle\rangle$ to $T :> Out\langle In\langle \*\rangle\rangle$.
    This is because $Out\langle In\langle Captured(\*)\rangle\rangle :> Out\langle In\langle \*\rangle\rangle$, i.e. for this constraint approximation properly relaxes the approximated type.
-   And we can infer $T :> Out\langle In\langle \*\rangle\rangle$ from $T :> Out\langle In\langle Captured(\*)\rangle\rangle$, $Out\langle In\langle Captured(\*)\rangle\rangle :> Out\langle In\langle \*\rangle\rangle$ and transitivity rule. 
+   And we can infer $T :> Out\langle In\langle \*\rangle\rangle$ from $T :> Out\langle In\langle Captured(\*)\rangle\rangle$, $Out\langle In\langle Captured(\*)\rangle\rangle :> Out\langle In\langle \*\rangle\rangle$ and transitivity rule.
 
 The core principle is that by approximating a type with captured types during subtyping reconstruction, we should be relaxing the approximated type constraints.
 
@@ -563,13 +569,13 @@ The possible solutions to this problem are:
 
 1. Erase all bounds containing captured types that could not be soundly approximated.
    The type system will be sound in this case.
-   But, this option will limit the applicability of the subtyping reconstruction. 
+   But, this option will limit the applicability of the subtyping reconstruction.
    For example, the last example above will not work, meaning `foo(V, U)` will be ill-typed.
 
 2. Preserve the captured types in the constraints.
    This option will complicate the compiler diagnostics as currently captured types are not really supposed to be printed.
    On the other hand, this option will increase the applicability of the subtyping reconstruction and allow to improve the handling of captured types in other parts of the type system as well, making them closer in expressiveness to existential types (which they actually are).
-  However, this would require some additional work around how captured types are handled in the type system implementation.
+   However, this would require some additional work around how captured types are handled in the type system implementation.
 
 ## Adding subtyping reconstruction to Kotlin flow-sensitive type system
 
@@ -579,7 +585,7 @@ Here we explain the steps needed to achieve that.
 ### New types of control-flow graph statements
 
 We introduce a new type of statements handled by the data-flow analysis, called *type intersection*.
-Type intersection statement for value `v` with types `T1 & T2 & ...`says that, in a specific node of a control-flow graph, value `v` definitely has a set of types `T1 & T2 & ...`, and these types should be used for subtyping reconstruction. 
+Type intersection statement for value `v` with types `T1 & T2 & ...`says that, in a specific node of a control-flow graph, value `v` definitely has a set of types `T1 & T2 & ...`, and these types should be used for subtyping reconstruction.
 
 After type intersection statements are handled by the subtyping reconstruction, we get additional type constraints, which are also stored and used by the data-flow analysis as *subtyping reconstruction result* statements.
 
@@ -769,13 +775,11 @@ This means that adding subtyping reconstruction could also improve bare type inf
 
 ### Builder inference
 
-<!-- Unreviewed section -->
-
 Builder inference is a feature allowing to infer a type of the lambda's parameters based on the code inside the lambda.
 During the typing of lambda, type parameters are replaced with flexible type variables.
 Constraints on them collected during type-checking and their value inferred on the lambda's exit.
 
-This feature conflicts with subtyping reconstruction 
+This feature conflicts with subtyping reconstruction
 because later one requires the exact types in intersection during the type-checking, not at the lambda's exit.
 For example, in the following code:
 
@@ -793,7 +797,7 @@ fun <T> foo(v: Inv<T>, t: T) = buildList {
 ```
 
 While the same code without builder inference would work correctly.
-This is not a significant issue as builder inference has other issues with the same origin, 
+This is not a significant issue as builder inference has other issues with the same origin,
 and all of them could be fixed by explicit type annotations for the lambda parameters.
 
 ### Smart casts
@@ -880,6 +884,35 @@ In this case, we have to infer constraints for each unmatched classifier and rem
 
 ## Possible breaking changes
 
+### Incompatibility with unsafe casts
+
+Subtyping reconstruction makes unsafe casts more dangerous
+since it extends unsafe type information to the whole function.
+This may even change the behavior of the existing code with unsafe casts.
+For example, the following code executes successfully in the current Kotlin version,
+but will throw a `ClassCastException` with subtyping reconstruction.
+
+```kotlin
+fun Any?.debug() = "Any?: ${toString()}"
+fun Int.debug() = "Int: ${toString()}"
+
+open class Box<T>(val value: T)
+class IntBox(value: Int): Box<Int>(value)
+
+fun <T> test(a: Box<T>, b: T) {
+    if (a is IntBox) {
+        // T =:= Int => `debug` becomes resolved to `Int.debug`
+        println(b.debug())
+    }
+}
+
+fun main() {
+    test(IntBox(1) as Box<String>, "1")
+}
+```
+
+We are aware of this issue but follow the general Kotlin principle that unsafe casts are not guaranteed to work correctly.
+
 ### Overload resolution changes
 
 As we will extend the type information, aka infer more precise types if subtyping reconstruction is available, it may affect the overload resolution results.
@@ -921,7 +954,7 @@ While this is technically a problem, in general [we do not consider](https://kot
 
 ### Prototype
 
-[Prototype implementation](https://github.com/e2e4b6b7/kotlin/pull/2)
+[Prototype implementation](https://github.com/e2e4b6b7/kotlin/pull/3)
 
 Prototype was written in the beginning of the KEEP design, and it does not support the full algorithm described in this document.
 
@@ -1001,20 +1034,20 @@ fun <A> Chart<A>.customDraw(chartData: A): Unit =
   }
 ```
 
-The programmer has to explicitly cast `chartData` to `PieData`, however this could be inferred by subtyping reconstruction. 
+The programmer has to explicitly cast `chartData` to `PieData`, however this could be inferred by subtyping reconstruction.
 The resulting code becomes more type-safe and less verbose.
 
 ```Kotlin
 fun <A> Chart<A>.customDraw(chartData: A): Unit =
-  when (this) {
-    is PieChart -> {
-      // We know that `A =:= PieData` here
-      //   aka we know that chartData is PieData
-      ... // modify
-      draw(chartData)
+    when (this) {
+        is PieChart -> {
+            // We know that `A =:= PieData` here
+            //   aka we know that chartData is PieData
+            ... // modify
+            draw(chartData)
+        }
+        else -> draw(chartData)
     }
-    else -> draw(chartData)
-  }
 ```
 
 ### Sources
