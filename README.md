@@ -113,7 +113,7 @@ Let's review the first example in more detail.
 Unfortunately, Kotlin allows one to define a GADT, but it has *no support for generalized pattern matching*.
 This means that Kotlin users either have to avoid using GADTs (i.e., it's as if Kotlin does not support GADTs) or preserve and validate the data type invariants *by hand* (i.e., the users have to write boilerplate code with the possibility of making an error).
 
-For example, if we translate the Scala example from above to Kotlin, it does not type check, because the Kotlin type checker is not able to infer that `e.i` is of type `Int`, even though in principle all necessary type information is there.
+For example, if we translate the Scala example from above to Kotlin, it does not type check, because the Kotlin type checker is not able to infer that `e.i` is also of type `T`, even though in principle all necessary type information is there.
 
 ```Kotlin
 sealed class Expr<out T>
@@ -251,12 +251,12 @@ This is justified by the following paragraph of the Kotlin specification.
 Let's review the algorithm on the following example.
 
 ```Kotlin
-interface Expr<T>
-interface ExprInt(var v: Int) : Expr<Int>
+interface Expr<out T>
+class ExprInt(val value: Int) : Expr<Int>
 
 fun <T> eval(e: Expr<T>): T =
   when (e) {
-    is ExprInt -> e.v
+    is ExprInt -> e.value
   }
 ```
 
@@ -283,7 +283,7 @@ Let's review the algorithm on the following, more complicated example.
 interface Expr<T>
 interface Tag<T>
 interface TExpr<E, T> : Expr<E>, Tag<T>
-interface ExprInt : Expr<Int>, Tag<String>
+class ExprInt(val value: Int) : Expr<Int>, Tag<String>
 
 fun <E, T> eval(e: TExpr<E, T>): E = when (e) {
   is ExprInt -> e.value
@@ -461,7 +461,7 @@ Let's consider the following constraints:
     fun <V> foo(t: In<Out<V>>) {}
     
     fun <T : Out<Serializable>> bar() {
-        foo(In<T>())
+        foo(object : In<T> { })
     }
     ```
 
@@ -693,31 +693,22 @@ fun <T> foo(v: Box<T>): T {
 }
 ```
 
-> We have some ideas of how this problem might be solved, which we will present in an additional KEEP.
-
-### When there is overload resolution
-
-Overload resolution is another case when we do not have an expected type, which stops us from using the subtyping reconstruction results.
-
-Let's consider the following example.
+Function call is another case when we do not have an expected type, which stops us from using the subtyping reconstruction results.
 
 ```kotlin
-sealed interface Box<T>
-class BoxInt : Box<Int>
-
 fun foo(a: Any?) = println("Any?")
 fun foo(s: String) = println("String")
 fun foo(i: Int) = println("Int")
 
 fun <T> bar(t: T, b: Box<T>) = foo(when (b) {
     is BoxInt -> t
+    else -> 42
 })
 ```
 
-Since the actual expected type for the argument of `foo` is unknown, the inferred type for the argument expression is `T` (similarly to the example above), and we resolve the call to `foo(a: Any?)`.
-
-In case we do not have any overload resolution involved (aka if we remove the overloads with `Any?` and `String`), then `foo` will be successfully resolved to `foo(i: Int)`, if we perform subtyping reconstruction.
-This happens because in case we only have one overload, we can use it to get the expected type, and with it we are able to infer `Int` for the argument.
+Since the actual expected type for the argument of `foo` is unknown, the inferred type for the argument expression is `Any?`, and we resolve the call to `foo(a: Any?)`.
+Although, if we extract `when` expression into a separate variable and annotate the expected type as `Int`, everything will type-check correctly, and call will be resolved to `foo(i: Int)`.
+This happens because we do not have expected types for function arguments due to overload resolution.
 
 ### Can we fix these problems?
 
