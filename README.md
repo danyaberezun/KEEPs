@@ -264,10 +264,10 @@ If we try to apply the algorithm to this case, we will not achieve any constrain
 But actually, `Float` is final and any type that can be assigned to a value of type `Float` is a supertype of it.
 So constraint `T :> Float` can be reconstructed in this case.
 
-Generally speaking, in case when in our intersection statement one of the types is final (totally) (denoted as `F`), 
+Generally speaking, in case when in our intersection statement one of the types is final with only invariant type parameters (denoted as `F`), 
 we may immediately transform `T & F` to `T :> F`.
-While it does not introduce anything in case top-level constructor of `T` is a classifier, 
-it may be useful in case T is a type variable.
+While it does not introduce anything new in case top-level constructor of `T` is a classifier, 
+it is useful in case `T` is a generic type variable.
 
 #### Examples of constraint generation
 
