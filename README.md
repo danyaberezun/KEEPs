@@ -473,7 +473,7 @@ This constraint is guaranteed to be satisfied by the original constraint.
 
 Let's consider the following constraints:
 
-* Context: $Out<Serializable> :> T$
+* Context: $Out\langle Serializable\rangle :> T$
 * $T :> Out<V>$
 
 
