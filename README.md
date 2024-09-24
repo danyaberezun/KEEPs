@@ -198,20 +198,21 @@ The pseudocode for the constraint generation is shown below.
 ```Kotlin
 fun generateConstraintsFor(supertypes: List<Type>) {
   val assumptions = List<Assumption>()
-  val projections = supertypes.map {
+  val projections = supertypes.map {                       // Stage 2
     createRealTypeProjection(it.classifier)
   }
-  supertypes.zip(projections).forEach {
+  supertypes.zip(projections).forEach {                    // Stage 3
     supertype, projection ->
       assumptions.add(projection <: supertype)
   }
-  projections.cartesianProduct().forEach { proj1, proj2 ->
+  projections.cartesianProduct().forEach { proj1, proj2 -> // Stage 4
     val lowestCommonClassifiers: List<Classifier> = lcc(
       proj1.classifier, proj2.classifier)
     lowestCommonClassifiers.forEach { classifier ->
       val upcastedProj1 = upcast(proj1, classifier)
       val upcastedProj2 = upcast(proj2, classifier)
-      assumptions.add(upcastedProj1 =:= upcastedProj2)
+      assumptions.add(upcastedProj1 =:= upcastedProj2)     // Stage 5
+    }
   }
 }
 ```
@@ -227,15 +228,15 @@ The input for the algorithm is a list of known supertypes for some value, which 
 
 Stage 1: If these supertypes contain intersection types, we consider each of the intersection type components as a separate supertype.
 
-Stage 2: Next, in line 3, we create so called "type projections" of the real type on the classifiers of these supertypes.
+Stage 2: Next we create so called "type projections" of the real type on the classifiers of these supertypes.
 A type projection of a real type is also a real type, which is this supertype's classifier type parameterized with fresh type arguments (if any).
 It can be viewed as a placeholder for the actual run-time type of the value.
 
-Stage 3: Then, in line 6, we record the constraint that these type projections are subtypes of their corresponding supertypes, as the actual run-time type of the value will be a subtype of its compile-time checked supertype.
+Stage 3: Then we record the constraint that these type projections are subtypes of their corresponding supertypes, as the actual run-time type of the value will be a subtype of its compile-time checked supertype.
 
-Stage 4: After that, in line 10, we iterate over all lowest common classifiers (line 14) for each possible pair of the type projections.
+Stage 4: After that we iterate over all lowest common classifiers for each possible pair of the type projections.
 The lowest common classifiers are determined with respect to the inheritance relation.
-Then, in line 14, we upcast both projections on all of those classifiers.
+Then we upcast both projections on all of those classifiers.
 Upcasting is the process of "lifting" the subtype to its supertype along the inheritance hierarchy together with the substitution of the type parameters.
 
 Stage 5: Finally, we generate strict equalities between these upcasted projections, as they represent supertypes of the same type (real type of the analyzed value) w.r.t. the same classifier.
