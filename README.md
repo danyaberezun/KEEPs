@@ -244,31 +244,6 @@ This is justified by the following paragraph of the Kotlin specification.
 > The transitive closure S∗(T) of the set of type supertypes S(T : \(S_1\), . . . , \(S_m\)) = {\(S_1\), . . . , \(S_m\)} ∪ S(\(S_1\)) ∪ . . . ∪ S(\(S_m\))
 > is consistent, i.e., does not contain two parameterized types with different type arguments.
 
-#### Special case
-
-One special case not covered by the presented algorithm could be observed in [another example](https://github.com/JetBrains/kotlin/blame/c2104d1927bf43939d33589d1a4ae930287e2272/kotlin-native/runtime/src/main/kotlin/kotlin/native/internal/FloatingPointParser.kt#L160) from the Kotlin compiler:
-
-```kotlin
-@Suppress("UNCHECKED_CAST")
-private inline fun <reified T> unaryMinus(value: T): T {
-    return when (value) {
-        is Float -> -value as T
-        is Double -> -value as T
-        else -> throw NumberFormatException()
-    }
-}
-```
-
-Type intersection that we have in the first branch is `Float & T`.
-If we try to apply the algorithm to this case, we will not achieve any constraints.
-But actually, `Float` is final and any type that can be assigned to a value of type `Float` is a supertype of it.
-So constraint `T :> Float` can be reconstructed in this case.
-
-Generally speaking, in case when in our intersection statement one of the types is final with only invariant type parameters (denoted as `F`), 
-we may immediately transform `T & F` to `T :> F`.
-While it does not introduce anything new in case top-level constructor of `T` is a classifier, 
-it is useful in case `T` is a generic type variable.
-
 #### Examples of constraint generation
 
 ##### Simple example
@@ -389,6 +364,30 @@ Let's follow the algorithm step by step.
       }
       ```
 
+* Final classes.
+  One more special case not covered by the presented algorithm could be observed in [another example](https://github.com/JetBrains/kotlin/blame/c2104d1927bf43939d33589d1a4ae930287e2272/kotlin-native/runtime/src/main/kotlin/kotlin/native/internal/FloatingPointParser.kt#L160) from the Kotlin compiler:
+
+   ```kotlin
+   @Suppress("UNCHECKED_CAST")
+   private inline fun <reified T> unaryMinus(value: T): T {
+       return when (value) {
+           is Float -> -value as T
+           is Double -> -value as T
+           else -> throw NumberFormatException()
+       }
+   }
+   ```
+
+  Type intersection that we have in the first branch is `Float & T`.
+  If we try to apply the algorithm to this case, we will not achieve any constraints.
+  But actually, `Float` is final and any type that can be assigned to a value of type `Float` is a supertype of it.
+  So constraint `T :> Float` can be reconstructed in this case.
+
+  Generally speaking, in case when in our intersection statement one of the types is final with only invariant type parameters (denoted as `F`),
+  we may immediately transform `T & F` to `T :> F`.
+  While it does not introduce anything new in case top-level constructor of `T` is a classifier,
+  it is useful in case `T` is a generic type variable.
+
 #### How this compares to the Scala GADT algorithm?
 
 The algorithm is quite different from the Scala GADT algorithm and may infer bounds in more cases.
@@ -474,7 +473,7 @@ This constraint is guaranteed to be satisfied by the original constraint.
 Let's consider the following constraints:
 
 * Context: $Out\langle Serializable\rangle :> T$
-* $T :> Out<V>$
+* $T :> Out\langle V\rangle$
 
 
 1. For function generics, such a system could be achieved with the following code:
