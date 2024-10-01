@@ -180,6 +180,16 @@ fun <T> evalEquality(e1: Expr<T>, e2: ExprIntLit): T {
 The current type system implementation collects such statements (smart casts) only for separate variables, which makes these examples ill-typed.
 Let us explain how we can extend the Kotlin type system to support subtyping reconstruction.
 
+## Overall structure of the approach
+
+The broad structure of the approach is as follows:
+
+1. We utilize **type intersection statements** collected by the existing mechanism for smart-casts.
+   **Type intersection statements** are of the form `A & B` which means that some value of a type `A` was successfully checked for a type `B`.
+2. We apply the subtyping reconstruction algorithm to these statements, resulting in new bounds for generic type variables, denoted as **subtyping reconstruction results**.
+3. We propagate **subtyping reconstruction results** through the control-flow graph.
+4. We supply the type checker with the **subtyping reconstruction results** to improve type inference and type checking.
+
 ## Subtyping reconstruction
 
 ### Bounds inference algorithm
@@ -607,12 +617,13 @@ The possible solutions to this problem are:
 Now that we have an algorithm which allows us to infer additional information about types, we need to integrate this algorithm to our flow-sensitive type system.
 Here we explain the steps needed to achieve that.
 
-### New types of control-flow graph statements
+### New type of control-flow graph statements
 
-We introduce a new type of statements handled by the data-flow analysis, called *type intersection*.
-Type intersection statement for value `v` with types `T1 & T2 & ...`says that, in a specific node of a control-flow graph, value `v` definitely has a set of types `T1 & T2 & ...`, and these types should be used for subtyping reconstruction.
+We re-use an existing type of statements handled by the data-flow analysis, called *type intersection*.
+Type intersection statement for value `v` with types `T1 & T2 & ...` says that, in a specific node of a control-flow graph, value `v` definitely has a set of types `T1 & T2 & ...`, and these types should be used for subtyping reconstruction.
 
-After type intersection statements are handled by the subtyping reconstruction, we get additional type constraints, which are also stored and used by the data-flow analysis as *subtyping reconstruction result* statements.
+After type intersection statements are handled by the subtyping reconstruction, we get additional type constraints of the form `TypeVariable =? Type`, where `=?` is a subtyping or equality operation.
+These constraints are stored and used by the data-flow analysis as a new type of statements, called *subtyping reconstruction results*.
 
 For example, let us consider the following code.
 
