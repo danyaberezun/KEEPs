@@ -8,14 +8,96 @@
 
 ## Introduction
 
-### (Generalized) algebraic data types
+### Motivation
+
+Kotlin aims to reduce the number of casts using smart-cast techniques.
+However, sometimes they are not powerful enough to eliminate certain redundant unsafe casts.
+Let's consider implementing a simple arithmetic expression evaluator in Kotlin:
+
+```Kotlin
+sealed interface Expr<out V>
+class IntLit(val value: Int) : Expr<Int>
+class Add(val left: Expr<Int>, val right: Expr<Int>) : Expr<Int>
+class Tuple<X, Y>(val x: Expr<X>, val y: Expr<Y>) : Expr<Pair<X, Y>>
+// ...
+
+fun <T> eval(e: Expr<T>): T = when (e) {
+    is IntLit -> e.value
+    // ...
+}
+```
+
+In this example, we introduce a type parameter `V` for the `Expr` interface,
+representing the type of the value that the expression evaluates to.
+This design ensures that any expression created is correct by construction.
+For instance, it becomes impossible to create an expression that uses a binary operator on tuples.
+
+However, when we try to evaluate this expression, even for the simplest `IntLit` case,
+the compiler produces a type mismatch error: `Type mismatch. Required: T, Found: Int`
+To resolve this error, we need to write an explicit unsafe cast:
+`is IntLit -> e.value as T` and add a `@Suppress("UNCHECKED_CAST")` annotation.
+
+In this particular case,
+the cast is indeed safe because if this function were called with `IntLit`,
+then `T` have to be a supertype of `Int` (due to the covariance of `Expr`).
+Therefore, it is safe to pass an expression of type `Int` where `T` is expected.
+
+We can ensure that the cast is safe using the constraints encoded in the declaration of `IntLit`.
+Such an introduction of constraints encoded in the class declaration
+is a part of generalized algebraic data types (GADTs) in functional languages like Scala, OCaml, Haskell, etc.
+Kotlin allows declaring GADT-like classes,
+but the compiler does not incorporate these constraints to reduce some deducible casts.
+
+The goal of this KEEP is to improve smart-casts by leveraging the constraints from class declarations.
+
+### Real-world examples
+
+Several real-world examples of similar cases could be found in Kotlin compiler:
+
+1. [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/core/reflection.jvm/src/kotlin/reflect/jvm/internal/calls/ValueClassAwareCaller.kt#L45)
+2. [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/compiler/resolution/src/org/jetbrains/kotlin/resolve/calls/KotlinCallResolver.kt#L165)
+3. [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/compiler/fir/providers/src/org/jetbrains/kotlin/fir/types/TypeUtils.kt#L211-L214)
+4. [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/jps/jps-plugin/src/org/jetbrains/kotlin/jps/model/ProjectSettings.kt#L72-L75)
+
+Let's review the first example in more detail.
+
+```Kotlin
+// interface Caller<out M>
+// class BoundStatic(...): Caller<ReflectMethod>
+// class BoundStaticMultiFieldValueClass(...): Caller<ReflectMethod>
+
+// oldCaller: Caller<M>
+
+private val caller: Caller<M> = if (oldCaller is CallerImpl.Method.BoundStatic) {
+    //                              From this ^ check we know that oldCaller is of class BoundStatic.
+    //                              Thus we know that if this chack passed, then M is a supertype of ReflectMethod
+    val receiverType = (descriptor.extensionReceiverParameter ?: descriptor.dispatchReceiverParameter)?.type
+    if (receiverType != null && receiverType.needsMfvcFlattening()) {
+        val unboxMethods = getMfvcUnboxMethods(receiverType.asSimpleType())!!
+        val boundReceiverComponents = unboxMethods.map { it.invoke(oldCaller.boundReceiver) }.toTypedArray()
+        @Suppress("UNCHECKED_CAST")
+        CallerImpl.Method.BoundStaticMultiFieldValueClass(oldCaller.member, boundReceiverComponents) as Caller<M>
+        // This cast ^ is always safe,
+        // because M :> ReflectMethod => Caller<M> :> Caller<ReflectMethod> :> BoundStaticMultiFieldValueClass
+    } else {
+        oldCaller
+    }
+} else {
+    oldCaller
+}
+```
+
+> For more advanced examples, see [More advanced GADT-like use-cases](#more-advanced-gadt-like-use-cases) section in Addendum.
+
+### Generalized algebraic data types
 
 Kotlin currently allows one to declare algebraic data types, or *ADT*, via sealed classes/interfaces and data classes.
 ADTs allows one to form a type by "algebraically" combining other types, where the sum type is represented as a sealed class/interface, and the product type is represented as a data class.
 The beauty comes when ADTs are also equipped with pattern matching (`when` expressions) on their structure and types.
 
-In functional programming (for example, with languages like Scala, OCaml, Haskell) there is a more powerful concept of generalized algebraic data types, or *GADT* (aka guarded recursive datatypes).
-It is a generalization of parametric ADTs which permits value constructors to return specific, rather than parametric, type-instantiations of their own datatype.
+In functional programming, there's a more powerful concept known as generalized algebraic data types (GADTs).
+GADTs extend the idea of ADTs by allowing constructors (subclasses) to have more specific,
+rather than fully generic, type parameters.
 
 The simplest example of the difference between ADT and GADT is the following.
 
@@ -32,38 +114,31 @@ class AggregateBox<T>(s: List<T>) : GadtBox<List<T>>(s)
 `AdtBox` inheritors add new fields and change behavior, but they keep type parameter `T` *unchanged* and *unconstrained*.
 On the contrary, `GadtBox` inheritors introduce new constraints on `T`, making it *specific* for a *specific inheritor*, which makes `GadtBox` a GADT and not just an ADT.
 
-GADTs enable the storage of additional type information (type constraints or invariants) in ADTs, along with the ability of using this information when doing pattern matching.
-
-One of the classic well-known GADT use-cases is ensuring type safety when defining DSLs.
-For example, in Scala an arithmetic expression can be made type-safe by construction, e.g. it is impossible to construct an expression that uses binary operator on non-numerical values and tuples.
+For example, in Scala 3, an arithmetic expression can also be declared correct by construction using GADT:
 
 ```Scala 3
-enum Expr[A]:
+enum Expr[+A]:
   case LitInt(i: Int) extends Expr[Int]
   case Add(e1: Expr[Int], e2: Expr[Int]) extends Expr[Int]
   case Tuple[X, Y](x: Expr[X], y: Expr[Y]) extends Expr[(X, Y)]
 ```
 
-In the example, constructor `LitInt` ensures that the data being created is an `Expr[Int]`, not just some generalized `Expt[T]`, while binary addition constructor `Add` checks that its sub-expressions are numbers, i.e., are of type `Expr[Int]`.
-Thus, in this case our *data type invariants* are: any integer literal is actually an integer, and any binary addition has integer sub-expressions.
-This information is stored in the type itself, meaning there is no way to construct an ill-formed expression (for example, a binary addition of two tuples).
-
-As ADTs come with pattern matching, generalized ADTs come with generalized pattern matching which uses the type information stored in GADTs to guarantee code type safety.
-In other words, as GADTs represent *types correct by construction at compile-time*, generalized pattern matching *guarantees absence of type errors during run-time*.
-
+As ADTs come with pattern matching, generalized ADTs come with generalized pattern matching,
+which makes the type information stored in GADTs available for the type-checker in the corresponding branch.
 Continuing on the previous example, the following function that evaluates arithmetic expressions is well-typed.
 
 ```Scala 3
 def eval[T](e: Expr[T]): T = e match
-  case LitInt(i) => i // GADT constraint `T =:= Int` allows the branch
+  case LitInt(i) => i // GADT constraint `T :> Int` allows the branch
                       // to return an `Int` and not a generic `T`
   case Add(e1, e2) => eval(e1) + eval(e2)
-                      // GADT constraint allows to infer that `eval(Expr[Int])`
-                      // returns an `Int` and not a generic `T`,
-                      // which allows to use binary addition
+                      // Constraint allows inferring that `eval(Expr[Int])`
+                      // returns an `Int` which allows to use binary addition
+                      // GADT constraint `T :> Int` allows the branch
+                      // to return an `Int` and not a generic `T`
   case Tuple(x, y) => (eval(x), eval(y))
-                      // GADT constraint `T =:= Tuple` allows the branch
-                      // to return a tuple and not a generic `T`
+                      // GADT constraint `T :> Tuple[X, Y]` allows the branch
+                      // to return a tuple of corresponding values and not a generic `T`
 ```
 
 That is, we locally use the information stored in GADTs in specific branches of pattern matching, ensuring the branch is well-typed with respect to this information, and correctly "forget" the information outside of these branches.
@@ -71,62 +146,10 @@ Without the ability to do generalized pattern matching, GADTs lose most of their
 
 As follows from these points, GADTs are most useful in applications where compile- and run-time type safety is especially important, for example, complex DSLs, strongly-typed evaluators, generic data structure pretty-printing, traversals and queries, or database access.
 
-#### Real-world GADT-like examples in Kotlin
-
-Several real-world examples of GADT-like use-cases could be found in Kotlin compiler:
-
-1. [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/core/reflection.jvm/src/kotlin/reflect/jvm/internal/calls/ValueClassAwareCaller.kt#L45)
-2. [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/compiler/resolution/src/org/jetbrains/kotlin/resolve/calls/KotlinCallResolver.kt#L165)
-3. [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/compiler/fir/providers/src/org/jetbrains/kotlin/fir/types/TypeUtils.kt#L211-L214)
-4. [GitHub link](https://github.com/JetBrains/kotlin/blob/242c1cf5f0814fbe9df02b4b85a63298b30b4b67/jps/jps-plugin/src/org/jetbrains/kotlin/jps/model/ProjectSettings.kt#L72-L75)
-
-Let's review the first example in more detail.
-
-```Kotlin
-    // interface Caller<out M>
-    // class BoundStatic(...): Caller<ReflectMethod>
-    // class BoundStaticMultiFieldValueClass(...): Caller<ReflectMethod>
-
-    private val caller: Caller<M> = if (oldCaller is CallerImpl.Method.BoundStatic) {
-        //                              From this ^ check we know that Caller<M> & BoundStatic
-        //                              and could infer that M :> ReflectMethod
-        val receiverType = (descriptor.extensionReceiverParameter ?: descriptor.dispatchReceiverParameter)?.type
-        if (receiverType != null && receiverType.needsMfvcFlattening()) {
-            val unboxMethods = getMfvcUnboxMethods(receiverType.asSimpleType())!!
-            val boundReceiverComponents = unboxMethods.map { it.invoke(oldCaller.boundReceiver) }.toTypedArray()
-            @Suppress("UNCHECKED_CAST")
-            CallerImpl.Method.BoundStaticMultiFieldValueClass(oldCaller.member, boundReceiverComponents) as Caller<M>
-            // This cast ^ is always safe,
-            // because M :> ReflectMethod => Caller<M> :> Caller<ReflectMethod> :> BoundStaticMultiFieldValueClass
-        } else {
-            oldCaller
-        }
-    } else {
-        oldCaller
-    }
-```
-
-> For more advanced examples, see [More advanced GADT-like use-cases](#more-advanced-gadt-like-use-cases) section in Addendum.
-
-### GADTs in Kotlin
-
 Unfortunately, Kotlin allows one to define a GADT, but it has *no support for generalized pattern matching*.
 This means that Kotlin users either have to avoid using GADTs (i.e., it's as if Kotlin does not support GADTs) or preserve and validate the data type invariants *by hand* (i.e., the users have to write boilerplate code with the possibility of making an error).
 
-For example, if we translate the Scala example from above to Kotlin, it does not type check, because the Kotlin type checker is not able to infer that `e.i` is also of type `T`, even though in principle all necessary type information is there.
-
-```Kotlin
-sealed class Expr<out T>
-class ExprIntLit(val i: Int) : Expr<Int>()
-
-fun <T> eval(e: Expr<T>): T = when (e) {
-    is ExprIntLit -> e.i // Type mismatch. Required: T, Found: Int
-}
-```
-
 This KEEP proposes how the current Kotlin type system can be modified in order to cover this problem in the language design by adding support for generalized pattern matching.
-
-Besides improvements to the GADT user experience, adding the support for generalized pattern matching also improves smart casts behaviour and allows one to get rid of a number of unsafe casts in the code even without the use of GADTs.
 
 ## From generalized pattern matching to subtyping reconstruction
 
@@ -658,7 +681,7 @@ As in different control-flow graph nodes these constraints might be different, i
 
 ### Examples
 
-An example that utilizes flow-sensitivity was already shown in [Real-world GADT-like examples in Kotlin](#real-world-gadt-like-examples-in-kotlin) section.
+An example that utilizes flow-sensitivity was already shown in [Real-world examples](#real-world-examples) section.
 There we used data flow to propagate $M :> ReflectMethod$ in the body of the `if` expression.
 
 Let's review the second example from the Kotlin compiler from this section as it demonstrates the power of flow-sensitive subtyping reconstruction better.
